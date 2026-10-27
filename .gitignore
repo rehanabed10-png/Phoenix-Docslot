@@ -31,3 +31,12 @@ lerna-debug.log*
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# TypeScript build cache
+backend/*.tsbuildinfo
+backend/dist/

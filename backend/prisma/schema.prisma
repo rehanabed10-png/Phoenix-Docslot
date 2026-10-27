@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ExceptionType {
+  UNAVAILABLE
+  CUSTOM_HOURS
+}
+
+model UserProfile {
+  id        String   @id @db.Uuid
+  fullName  String   @db.VarChar(120)
+  email     String   @unique @db.VarChar(255)
+  phone     String?  @db.VarChar(20)
+  role      UserRole @default(PATIENT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  doctorProfile DoctorProfile?
+  appointments  Appointment[] @relation("PatientAppointments")
+  auditLogs     AuditLog[]    @relation("AuditActor")
+
+  @@index([role, isActive])
+}
+
+model DoctorProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userProfileId   String   @unique @db.Uuid
+  specialty       String   @db.VarChar(100)
+  qualification   String?  @db.VarChar(200)
+  consultationFee Decimal? @db.Decimal(10, 2)
+  bio             String?  @db.Text
+  isAcceptingBookings Boolean @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  userProfile       UserProfile        @relation(fields: [userProfileId], references: [id], onDelete: Restrict)
+  weeklyAvailability WeeklyAvailability[]
+  availabilityExceptions AvailabilityException[]
+  appointments      Appointment[]
+
+  @@index([specialty, isAcceptingBookings])
+}
+
+model WeeklyAvailability {
+  id           String   @id @default(uuid()) @db.Uuid
+  doctorId     String   @db.Uuid
+  dayOfWeek    Int
+  startTime    String   @db.VarChar(5)
+  endTime      String   @db.VarChar(5)
+  slotDuration Int      @default(30)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, dayOfWeek, isActive])
+}
+
+model AvailabilityException {
+  id        String        @id @default(uuid()) @db.Uuid
+  doctorId  String        @db.Uuid
+  date      DateTime      @db.Date
+  type      ExceptionType @default(UNAVAILABLE)
+  startTime String?       @db.VarChar(5)
+  endTime   String?       @db.VarChar(5)
+  reason    String?       @db.VarChar(255)
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, date])
+}
+
+model Appointment {
+  id          String            @id @default(uuid()) @db.Uuid
+  patientId   String            @db.Uuid
+  doctorId    String            @db.Uuid
+  startAt     DateTime          @db.Timestamptz(3)
+  endAt       DateTime          @db.Timestamptz(3)
+  status      AppointmentStatus @default(BOOKED)
+  reason      String?           @db.VarChar(500)
+  cancellationReason String?    @db.VarChar(500)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  patient UserProfile  @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Restrict)
+  doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, startAt])
+  @@index([doctorId, startAt, status])
+  @@index([status, startAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   String?  @db.VarChar(100)
+  details    Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  actor UserProfile? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
