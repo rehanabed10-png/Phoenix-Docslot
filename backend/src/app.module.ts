@@ -3,10 +3,11 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PostgresExclusionFilter } from './common/filters/postgres-exclusion.filter.js';
+import { DoctorsModule } from './doctors/doctors.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, DoctorsModule],
   controllers: [AppController],
   providers: [
     AppService,
