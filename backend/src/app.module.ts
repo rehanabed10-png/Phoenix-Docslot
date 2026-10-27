@@ -2,12 +2,13 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AvailabilityModule } from './availability/availability.module.js';
 import { PostgresExclusionFilter } from './common/filters/postgres-exclusion.filter.js';
 import { DoctorsModule } from './doctors/doctors.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule, DoctorsModule],
+  imports: [PrismaModule, DoctorsModule, AvailabilityModule],
   controllers: [AppController],
   providers: [
     AppService,
