@@ -62,6 +62,10 @@ describe('AvailabilityController (e2e)', () => {
       },
       availabilityException: {
         findMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      appointment: {
+        findMany: vi.fn(),
       },
       $transaction: vi.fn((callback: (tx: any) => Promise<any>) =>
         callback(mockPrismaService),
@@ -136,6 +140,57 @@ describe('AvailabilityController (e2e)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
+    });
+
+    it('GET /doctors/:doctorId/availability/slots rejects impossible calendar date 2026-02-31 with 400 Bad Request', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/doctors/${targetDoctorId}/availability/slots?date=2026-02-31`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('date must be a valid calendar date in YYYY-MM-DD format'),
+        ]),
+      );
+    });
+
+    it('GET /doctors/:doctorId/availability/slots rejects malformed date string with 400 Bad Request', async () => {
+      const res = await request(app.getHttpServer()).get(
+        `/doctors/${targetDoctorId}/availability/slots?date=invalid-date`,
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('date must be a valid calendar date in YYYY-MM-DD format'),
+        ]),
+      );
+    });
+
+    it('GET /doctors/:doctorId/availability/slots returns 200 OK for valid calendar date', async () => {
+      mockPrismaService.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: targetDoctorId,
+        isAcceptingBookings: true,
+      });
+      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.weeklyAvailability.findMany.mockResolvedValueOnce([
+        {
+          startTime: '09:00',
+          endTime: '10:00',
+          slotDuration: 30,
+        },
+      ]);
+      mockPrismaService.appointment.findMany.mockResolvedValueOnce([]);
+
+      const res = await request(app.getHttpServer()).get(
+        `/doctors/${targetDoctorId}/availability/slots?date=2026-11-20`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.doctorId).toBe(targetDoctorId);
+      expect(res.body.date).toBe('2026-11-20');
+      expect(res.body.slots).toHaveLength(2);
     });
   });
 

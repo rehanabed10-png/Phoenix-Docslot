@@ -16,14 +16,19 @@ describe('AvailabilityService', () => {
     };
     weeklyAvailability: {
       findMany: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
       deleteMany: ReturnType<typeof vi.fn>;
       createMany: ReturnType<typeof vi.fn>;
     };
     availabilityException: {
       findMany: ReturnType<typeof vi.fn>;
       findFirst: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       delete: ReturnType<typeof vi.fn>;
+    };
+    appointment: {
+      findMany: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -37,14 +42,19 @@ describe('AvailabilityService', () => {
       },
       weeklyAvailability: {
         findMany: vi.fn(),
+        findFirst: vi.fn(),
         deleteMany: vi.fn(),
         createMany: vi.fn(),
       },
       availabilityException: {
         findMany: vi.fn(),
         findFirst: vi.fn(),
+        findUnique: vi.fn(),
         create: vi.fn(),
         delete: vi.fn(),
+      },
+      appointment: {
+        findMany: vi.fn(),
       },
       $transaction: vi.fn((callback: (tx: any) => Promise<any>) =>
         callback(mockPrisma),
@@ -444,6 +454,136 @@ describe('AvailabilityService', () => {
         service.deleteException(sampleDoctorId, 'unowned-exc'),
       ).rejects.toThrow(NotFoundException);
       expect(mockPrisma.availabilityException.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getAvailableSlots', () => {
+    // 2026-11-20 is Friday (dayOfWeek = 5)
+    const futureDate = '2026-11-20';
+
+    it('returns empty slots when doctor is not accepting bookings', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+        isAcceptingBookings: false,
+      });
+
+      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+
+      expect(result.doctorId).toBe(sampleDoctorId);
+      expect(result.date).toBe(futureDate);
+      expect(result.slots).toEqual([]);
+    });
+
+    it('returns empty slots when doctor has an UNAVAILABLE exception on date', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+        isAcceptingBookings: true,
+      });
+      mockPrisma.availabilityException.findUnique.mockResolvedValueOnce({
+        id: 'exc-1',
+        doctorId: sampleDoctorId,
+        date: new Date(`${futureDate}T00:00:00.000Z`),
+        type: ExceptionType.UNAVAILABLE,
+      });
+
+      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+
+      expect(result.slots).toEqual([]);
+    });
+
+    it('generates non-overlapping slots from recurring weekly schedule', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+        isAcceptingBookings: true,
+      });
+      mockPrisma.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.weeklyAvailability.findMany.mockResolvedValueOnce([
+        {
+          startTime: '09:00',
+          endTime: '11:00',
+          slotDuration: 30,
+        },
+      ]);
+      mockPrisma.appointment.findMany.mockResolvedValueOnce([]);
+
+      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+
+      expect(result.slots).toHaveLength(4);
+      expect(result.slots[0]).toMatchObject({
+        startTime: '09:00',
+        endTime: '09:30',
+        available: true,
+      });
+      expect(result.slots[3]).toMatchObject({
+        startTime: '10:30',
+        endTime: '11:00',
+        available: true,
+      });
+    });
+
+    it('excludes slots overlapping with existing booked appointments', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+        isAcceptingBookings: true,
+      });
+      mockPrisma.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.weeklyAvailability.findMany.mockResolvedValueOnce([
+        {
+          startTime: '09:00',
+          endTime: '11:00',
+          slotDuration: 30,
+        },
+      ]);
+      // 09:30 to 10:00 is booked (in UTC for Asia/Kolkata +05:30)
+      const bookedStart = new Date(`${futureDate}T09:30:00+05:30`);
+      const bookedEnd = new Date(`${futureDate}T10:00:00+05:30`);
+
+      mockPrisma.appointment.findMany.mockResolvedValueOnce([
+        {
+          startAt: bookedStart,
+          endAt: bookedEnd,
+        },
+      ]);
+
+      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+
+      expect(result.slots).toHaveLength(3);
+      const startTimes = result.slots.map((s) => s.startTime);
+      expect(startTimes).toEqual(['09:00', '10:00', '10:30']);
+      expect(startTimes).not.toContain('09:30');
+    });
+
+    it('generates slots adhering to CUSTOM_HOURS exception overriding weekly schedule', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+        isAcceptingBookings: true,
+      });
+      mockPrisma.availabilityException.findUnique.mockResolvedValueOnce({
+        id: 'exc-custom',
+        doctorId: sampleDoctorId,
+        date: new Date(`${futureDate}T00:00:00.000Z`),
+        type: ExceptionType.CUSTOM_HOURS,
+        startTime: '14:00',
+        endTime: '15:30',
+      });
+      mockPrisma.weeklyAvailability.findFirst.mockResolvedValueOnce({
+        slotDuration: 30,
+      });
+      mockPrisma.appointment.findMany.mockResolvedValueOnce([]);
+
+      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+
+      expect(result.slots).toHaveLength(3);
+      expect(result.slots[0].startTime).toBe('14:00');
+      expect(result.slots[2].endTime).toBe('15:30');
+    });
+
+    it('throws NotFoundException when doctor does not exist', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getAvailableSlots('non-existent-id', futureDate),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

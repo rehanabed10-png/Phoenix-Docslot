@@ -79,8 +79,14 @@ describe('PostgresExclusionFilter', () => {
   });
 
   describe('catch() handling', () => {
-    it('translates 23P01 exclusion error to HTTP 409 Conflict', () => {
-      filter.catch({ code: '23P01' }, mockHost);
+    it('translates doctor exclusion error to HTTP 409 Conflict with doctor message', () => {
+      filter.catch(
+        {
+          code: '23P01',
+          constraint: 'Appointment_no_overlapping_bookings',
+        },
+        mockHost,
+      );
 
       expect(mockStatus).toHaveBeenCalledWith(HttpStatus.CONFLICT);
       expect(mockJson).toHaveBeenCalledWith(
@@ -88,6 +94,27 @@ describe('PostgresExclusionFilter', () => {
           statusCode: HttpStatus.CONFLICT,
           error: 'Conflict',
           message: 'The requested appointment time slot is already booked.',
+          timestamp: expect.any(String),
+        }),
+      );
+    });
+
+    it('translates patient exclusion error to HTTP 409 Conflict with patient message', () => {
+      filter.catch(
+        {
+          code: '23P01',
+          constraint: 'Appointment_patient_no_overlapping_bookings',
+        },
+        mockHost,
+      );
+
+      expect(mockStatus).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+      expect(mockJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          message:
+            'You already have an active appointment scheduled during this time slot.',
           timestamp: expect.any(String),
         }),
       );

@@ -8,3 +8,16 @@
  * local schedule intervals to UTC appointments without ambiguous conversions.
  */
 export const DEFAULT_CLINIC_TIMEZONE = 'Asia/Kolkata';
+export const DEFAULT_SLOT_DURATION = 30;
+
+/**
+ * Derives calendar date string (YYYY-MM-DD) in the clinic local timezone (Asia/Kolkata).
+ */
+export function getLocalDateStringInClinicTimezone(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: DEFAULT_CLINIC_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}

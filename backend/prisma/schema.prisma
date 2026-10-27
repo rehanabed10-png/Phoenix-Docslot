@@ -90,7 +90,7 @@ model AvailabilityException {
 
   doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
-  @@index([doctorId, date])
+  @@unique([doctorId, date])
 }
 
 model Appointment {

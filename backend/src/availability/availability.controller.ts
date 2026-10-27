@@ -21,6 +21,10 @@ import {
   ExceptionQueryDto,
 } from './dto/availability-exception.dto.js';
 import {
+  SlotAvailabilityResponseDto,
+  SlotQueryDto,
+} from './dto/slot-availability.dto.js';
+import {
   SetWeeklyScheduleDto,
   WeeklyScheduleResponseDto,
 } from './dto/weekly-availability.dto.js';
@@ -48,6 +52,17 @@ export class AvailabilityController {
     @Query() query: ExceptionQueryDto,
   ): Promise<AvailabilityExceptionResponseDto[]> {
     return this.availabilityService.getExceptions(doctorId, query);
+  }
+
+  /**
+   * Public: Retrieves available, bookable slots for a doctor on a specific date.
+   */
+  @Get('slots')
+  async getSlots(
+    @Param('doctorId', new ParseUUIDPipe({ version: '4' })) doctorId: string,
+    @Query() query: SlotQueryDto,
+  ): Promise<SlotAvailabilityResponseDto> {
+    return this.availabilityService.getAvailableSlots(doctorId, query.date);
   }
 
   /**

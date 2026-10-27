@@ -53,6 +53,56 @@ export function isPostgresExclusionViolation(error: unknown): boolean {
   return false;
 }
 
+export function extractExclusionConstraintName(error: unknown): string | null {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+
+  const err = error as Record<string, any>;
+
+  if (typeof err.constraint === 'string') {
+    return err.constraint;
+  }
+
+  if (err.cause && typeof err.cause === 'object' && typeof err.cause.constraint === 'string') {
+    return err.cause.constraint;
+  }
+
+  if (
+    err.driverException &&
+    typeof err.driverException === 'object' &&
+    typeof err.driverException.constraint === 'string'
+  ) {
+    return err.driverException.constraint;
+  }
+
+  if (err.meta && typeof err.meta === 'object') {
+    const meta = err.meta as Record<string, any>;
+    if (typeof meta.constraint === 'string') {
+      return meta.constraint;
+    }
+    if (
+      meta.database_error &&
+      typeof meta.database_error === 'object' &&
+      typeof meta.database_error.constraint === 'string'
+    ) {
+      return meta.database_error.constraint;
+    }
+  }
+
+  const text = `${typeof err.message === 'string' ? err.message : ''} ${
+    typeof err.detail === 'string' ? err.detail : ''
+  }`;
+  if (text.includes('Appointment_patient_no_overlapping_bookings')) {
+    return 'Appointment_patient_no_overlapping_bookings';
+  }
+  if (text.includes('Appointment_no_overlapping_bookings')) {
+    return 'Appointment_no_overlapping_bookings';
+  }
+
+  return null;
+}
+
 @Catch()
 export class PostgresExclusionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PostgresExclusionFilter.name);
@@ -62,14 +112,20 @@ export class PostgresExclusionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     if (isPostgresExclusionViolation(exception)) {
+      const constraint = extractExclusionConstraintName(exception);
       this.logger.warn(
-        'PostgreSQL exclusion constraint violation detected (23P01). Translating to 409 Conflict.',
+        `PostgreSQL exclusion constraint violation detected (23P01). Constraint: "${constraint ?? 'unknown'}". Translating to 409 Conflict.`,
       );
+
+      const message =
+        constraint === 'Appointment_patient_no_overlapping_bookings'
+          ? 'You already have an active appointment scheduled during this time slot.'
+          : 'The requested appointment time slot is already booked.';
 
       response.status(HttpStatus.CONFLICT).json({
         statusCode: HttpStatus.CONFLICT,
         error: 'Conflict',
-        message: 'The requested appointment time slot is already booked.',
+        message,
         timestamp: new Date().toISOString(),
       });
       return;

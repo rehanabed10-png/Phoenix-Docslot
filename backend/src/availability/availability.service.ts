@@ -7,10 +7,18 @@ import {
 import { ExceptionType } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
+  DEFAULT_CLINIC_TIMEZONE,
+  DEFAULT_SLOT_DURATION,
+} from './config/availability.config.js';
+import {
   AvailabilityExceptionResponseDto,
   CreateAvailabilityExceptionDto,
   ExceptionQueryDto,
 } from './dto/availability-exception.dto.js';
+import {
+  SlotAvailabilityResponseDto,
+  SlotItemDto,
+} from './dto/slot-availability.dto.js';
 import {
   SetWeeklyScheduleDto,
   WeeklyScheduleItemDto,
@@ -27,6 +35,23 @@ export class AvailabilityService {
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  /**
+   * Helper to convert minutes from midnight back to HH:mm string format.
+   */
+  private minutesToTime(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Derives dayOfWeek (0=Sun..6=Sat) strictly from local calendar date YYYY-MM-DD.
+   */
+  private getDayOfWeekFromDateString(dateStr: string): number {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   }
 
   /**
@@ -82,6 +107,208 @@ export class AvailabilityService {
   // ==========================================
   // Public Read-Only APIs (Exposed on Controller)
   // ==========================================
+
+  /**
+   * Public: Generates bookable slots for a doctor on a specific date, adhering to
+   * Asia/Kolkata date boundaries, weekly availability, date exceptions, past-time
+   * filtering, and existing bookings.
+   */
+  async getAvailableSlots(
+    doctorId: string,
+    date: string,
+    options?: { excludeAppointmentId?: string },
+  ): Promise<SlotAvailabilityResponseDto> {
+    const doctor = await this.prisma.doctorProfile.findUnique({
+      where: { id: doctorId },
+      select: { id: true, isAcceptingBookings: true },
+    });
+
+    if (!doctor) {
+      throw new NotFoundException(`Doctor with ID "${doctorId}" was not found.`);
+    }
+
+    if (!doctor.isAcceptingBookings) {
+      return {
+        doctorId,
+        date,
+        timezone: DEFAULT_CLINIC_TIMEZONE,
+        slotDuration: DEFAULT_SLOT_DURATION,
+        slots: [],
+      };
+    }
+
+    const dayOfWeek = this.getDayOfWeekFromDateString(date);
+    const parsedDate = new Date(`${date}T00:00:00.000Z`);
+
+    // Check availability exception for doctor and date using unique constraint
+    const exception = await this.prisma.availabilityException.findUnique({
+      where: {
+        doctorId_date: {
+          doctorId,
+          date: parsedDate,
+        },
+      },
+    });
+
+    if (exception && exception.type === ExceptionType.UNAVAILABLE) {
+      return {
+        doctorId,
+        date,
+        timezone: DEFAULT_CLINIC_TIMEZONE,
+        slotDuration: DEFAULT_SLOT_DURATION,
+        slots: [],
+      };
+    }
+
+    let intervals: Array<{ startTime: string; endTime: string; slotDuration: number }> = [];
+
+    if (
+      exception &&
+      exception.type === ExceptionType.CUSTOM_HOURS &&
+      exception.startTime &&
+      exception.endTime
+    ) {
+      // Slot-duration precedence rule:
+      // 1. Weekly schedule duration for this dayOfWeek
+      const weeklyForDay = await this.prisma.weeklyAvailability.findFirst({
+        where: { doctorId, dayOfWeek, isActive: true },
+        select: { slotDuration: true },
+      });
+
+      let duration = weeklyForDay?.slotDuration;
+
+      // 2. Dominant/any active weekly schedule duration
+      if (!duration) {
+        const anyWeekly = await this.prisma.weeklyAvailability.findFirst({
+          where: { doctorId, isActive: true },
+          select: { slotDuration: true },
+        });
+        duration = anyWeekly?.slotDuration;
+      }
+
+      // 3. Fallback to DEFAULT_SLOT_DURATION
+      duration = duration ?? DEFAULT_SLOT_DURATION;
+
+      intervals = [
+        {
+          startTime: exception.startTime,
+          endTime: exception.endTime,
+          slotDuration: duration,
+        },
+      ];
+    } else {
+      const weeklyRules = await this.prisma.weeklyAvailability.findMany({
+        where: {
+          doctorId,
+          dayOfWeek,
+          isActive: true,
+        },
+        orderBy: { startTime: 'asc' },
+        select: {
+          startTime: true,
+          endTime: true,
+          slotDuration: true,
+        },
+      });
+
+      intervals = weeklyRules.map((w) => ({
+        startTime: w.startTime,
+        endTime: w.endTime,
+        slotDuration: w.slotDuration,
+      }));
+    }
+
+    if (intervals.length === 0) {
+      return {
+        doctorId,
+        date,
+        timezone: DEFAULT_CLINIC_TIMEZONE,
+        slotDuration: DEFAULT_SLOT_DURATION,
+        slots: [],
+      };
+    }
+
+    // Generate candidate slots in Asia/Kolkata timezone (+05:30)
+    const candidateSlots: SlotItemDto[] = [];
+    const dominantDuration = intervals[0]?.slotDuration ?? DEFAULT_SLOT_DURATION;
+
+    for (const interval of intervals) {
+      let startMins = this.timeToMinutes(interval.startTime);
+      const endMins = this.timeToMinutes(interval.endTime);
+
+      while (startMins + interval.slotDuration <= endMins) {
+        const slotStartStr = this.minutesToTime(startMins);
+        const slotEndStr = this.minutesToTime(startMins + interval.slotDuration);
+
+        // Map wall-clock Asia/Kolkata (+05:30) to ISO Date
+        const startAt = new Date(`${date}T${slotStartStr}:00+05:30`);
+        const endAt = new Date(`${date}T${slotEndStr}:00+05:30`);
+
+        candidateSlots.push({
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+          startTime: slotStartStr,
+          endTime: slotEndStr,
+          available: true,
+        });
+
+        startMins += interval.slotDuration;
+      }
+    }
+
+    // Day boundaries in UTC for query (Asia/Kolkata day is from 00:00+05:30 to 23:59:59.999+05:30)
+    const dayStartUTC = new Date(`${date}T00:00:00+05:30`);
+    const dayEndUTC = new Date(`${date}T23:59:59.999+05:30`);
+
+    // Fetch existing BOOKED appointments for this doctor on this day
+    const bookedWhere: Record<string, any> = {
+      doctorId,
+      status: 'BOOKED',
+      startAt: { lt: dayEndUTC },
+      endAt: { gt: dayStartUTC },
+    };
+
+    if (options?.excludeAppointmentId) {
+      bookedWhere.id = { not: options.excludeAppointmentId };
+    }
+
+    const bookedAppointments = await this.prisma.appointment.findMany({
+      where: bookedWhere,
+      select: {
+        id: true,
+        startAt: true,
+        endAt: true,
+      },
+    });
+
+    const now = new Date();
+
+    // Filter slots: must be strictly in the future and not conflict with existing booked appointments
+    const availableSlots = candidateSlots.filter((slot) => {
+      const slotStart = new Date(slot.startAt);
+      const slotEnd = new Date(slot.endAt);
+
+      // Exclude past slots
+      if (slotStart <= now) {
+        return false;
+      }
+
+      // Exclude slots that overlap with any active booked appointment
+      const hasConflict = bookedAppointments.some((app) => {
+        return slotStart < app.endAt && slotEnd > app.startAt;
+      });
+
+      return !hasConflict;
+    });
+
+    return {
+      doctorId,
+      date,
+      timezone: DEFAULT_CLINIC_TIMEZONE,
+      slotDuration: dominantDuration,
+      slots: availableSlots,
+    };
+  }
 
   /**
    * Retrieves recurring weekly availability for a doctor.
