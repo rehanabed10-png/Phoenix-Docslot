@@ -61,7 +61,9 @@ export class AvailabilityService {
     const byDay = new Map<number, WeeklyScheduleItemDto[]>();
 
     for (const item of items) {
-      if (this.timeToMinutes(item.startTime) >= this.timeToMinutes(item.endTime)) {
+      if (
+        this.timeToMinutes(item.startTime) >= this.timeToMinutes(item.endTime)
+      ) {
         throw new BadRequestException(
           `startTime (${item.startTime}) must be strictly before endTime (${item.endTime}) on dayOfWeek ${item.dayOfWeek}.`,
         );
@@ -74,14 +76,17 @@ export class AvailabilityService {
 
     for (const [day, dayItems] of byDay.entries()) {
       dayItems.sort(
-        (a, b) => this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime),
+        (a, b) =>
+          this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime),
       );
 
       for (let i = 1; i < dayItems.length; i++) {
         const prev = dayItems[i - 1];
         const curr = dayItems[i];
 
-        if (this.timeToMinutes(curr.startTime) < this.timeToMinutes(prev.endTime)) {
+        if (
+          this.timeToMinutes(curr.startTime) < this.timeToMinutes(prev.endTime)
+        ) {
           throw new BadRequestException(
             `Schedule contains overlapping intervals on dayOfWeek ${day}: "${prev.startTime}-${prev.endTime}" and "${curr.startTime}-${curr.endTime}".`,
           );
@@ -100,7 +105,9 @@ export class AvailabilityService {
     });
 
     if (!doctor) {
-      throw new NotFoundException(`Doctor with ID "${doctorId}" was not found.`);
+      throw new NotFoundException(
+        `Doctor with ID "${doctorId}" was not found.`,
+      );
     }
   }
 
@@ -124,7 +131,9 @@ export class AvailabilityService {
     });
 
     if (!doctor) {
-      throw new NotFoundException(`Doctor with ID "${doctorId}" was not found.`);
+      throw new NotFoundException(
+        `Doctor with ID "${doctorId}" was not found.`,
+      );
     }
 
     if (!doctor.isAcceptingBookings) {
@@ -160,7 +169,11 @@ export class AvailabilityService {
       };
     }
 
-    let intervals: Array<{ startTime: string; endTime: string; slotDuration: number }> = [];
+    let intervals: Array<{
+      startTime: string;
+      endTime: string;
+      slotDuration: number;
+    }> = [];
 
     if (
       exception &&
@@ -230,7 +243,8 @@ export class AvailabilityService {
 
     // Generate candidate slots in Asia/Kolkata timezone (+05:30)
     const candidateSlots: SlotItemDto[] = [];
-    const dominantDuration = intervals[0]?.slotDuration ?? DEFAULT_SLOT_DURATION;
+    const dominantDuration =
+      intervals[0]?.slotDuration ?? DEFAULT_SLOT_DURATION;
 
     for (const interval of intervals) {
       let startMins = this.timeToMinutes(interval.startTime);
@@ -238,7 +252,9 @@ export class AvailabilityService {
 
       while (startMins + interval.slotDuration <= endMins) {
         const slotStartStr = this.minutesToTime(startMins);
-        const slotEndStr = this.minutesToTime(startMins + interval.slotDuration);
+        const slotEndStr = this.minutesToTime(
+          startMins + interval.slotDuration,
+        );
 
         // Map wall-clock Asia/Kolkata (+05:30) to ISO Date
         const startAt = new Date(`${date}T${slotStartStr}:00+05:30`);
@@ -313,7 +329,9 @@ export class AvailabilityService {
   /**
    * Retrieves recurring weekly availability for a doctor.
    */
-  async getWeeklyAvailability(doctorId: string): Promise<WeeklyScheduleResponseDto> {
+  async getWeeklyAvailability(
+    doctorId: string,
+  ): Promise<WeeklyScheduleResponseDto> {
     await this.ensureDoctorExists(doctorId);
 
     const entries = await this.prisma.weeklyAvailability.findMany({
@@ -447,7 +465,9 @@ export class AvailabilityService {
           'startTime and endTime are required when exception type is CUSTOM_HOURS.',
         );
       }
-      if (this.timeToMinutes(dto.startTime) >= this.timeToMinutes(dto.endTime)) {
+      if (
+        this.timeToMinutes(dto.startTime) >= this.timeToMinutes(dto.endTime)
+      ) {
         throw new BadRequestException(
           `startTime (${dto.startTime}) must be strictly before endTime (${dto.endTime}) for CUSTOM_HOURS.`,
         );

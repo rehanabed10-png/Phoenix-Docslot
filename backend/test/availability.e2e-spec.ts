@@ -5,7 +5,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GenerateKeyPairResult, generateKeyPair, SignJWT } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AuthService } from '../src/auth/auth.service.js';
 import { ExceptionType, UserRole } from '../generated/prisma/client.js';
@@ -63,6 +71,9 @@ describe('AvailabilityController (e2e)', () => {
       availabilityException: {
         findMany: vi.fn(),
         findUnique: vi.fn(),
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        delete: vi.fn(),
       },
       appointment: {
         findMany: vi.fn(),
@@ -132,7 +143,9 @@ describe('AvailabilityController (e2e)', () => {
       mockPrismaService.doctorProfile.findUnique.mockResolvedValueOnce({
         id: targetDoctorId,
       });
-      mockPrismaService.availabilityException.findMany.mockResolvedValueOnce([]);
+      mockPrismaService.availabilityException.findMany.mockResolvedValueOnce(
+        [],
+      );
 
       const res = await request(app.getHttpServer()).get(
         `/doctors/${targetDoctorId}/availability/exceptions`,
@@ -150,7 +163,9 @@ describe('AvailabilityController (e2e)', () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toEqual(
         expect.arrayContaining([
-          expect.stringContaining('date must be a valid calendar date in YYYY-MM-DD format'),
+          expect.stringContaining(
+            'date must be a valid calendar date in YYYY-MM-DD format',
+          ),
         ]),
       );
     });
@@ -163,7 +178,9 @@ describe('AvailabilityController (e2e)', () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toEqual(
         expect.arrayContaining([
-          expect.stringContaining('date must be a valid calendar date in YYYY-MM-DD format'),
+          expect.stringContaining(
+            'date must be a valid calendar date in YYYY-MM-DD format',
+          ),
         ]),
       );
     });
@@ -173,7 +190,9 @@ describe('AvailabilityController (e2e)', () => {
         id: targetDoctorId,
         isAcceptingBookings: true,
       });
-      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(
+        null,
+      );
       mockPrismaService.weeklyAvailability.findMany.mockResolvedValueOnce([
         {
           startTime: '09:00',
@@ -258,7 +277,9 @@ describe('AvailabilityController (e2e)', () => {
         .send(validSchedulePayload);
 
       expect(res.status).toBe(403);
-      expect(res.body.message).toContain('You are not authorized to modify another doctor');
+      expect(res.body.message).toContain(
+        'You are not authorized to modify another doctor',
+      );
     });
 
     it('returns 200 OK when owning Doctor A updates their own schedule', async () => {
@@ -328,17 +349,101 @@ describe('AvailabilityController (e2e)', () => {
     });
   });
 
-  describe('Unexposed Mutation Routes (Safety Boundary)', () => {
-    it('confirms POST /exceptions and DELETE /exceptions/:id remain unexposed (404 Not Found)', async () => {
+  describe('Availability Exceptions Mutation Routes', () => {
+    it('returns 401 Unauthorized when request lacks authentication token', async () => {
       const postRes = await request(app.getHttpServer())
         .post(`/doctors/${targetDoctorId}/availability/exceptions`)
         .send({ date: '2026-11-20', type: ExceptionType.UNAVAILABLE });
-      expect(postRes.status).toBe(404);
+      expect(postRes.status).toBe(401);
 
       const deleteRes = await request(app.getHttpServer()).delete(
-        `/doctors/${targetDoctorId}/availability/exceptions/any-id`,
+        `/doctors/${targetDoctorId}/availability/exceptions/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
       );
-      expect(deleteRes.status).toBe(404);
+      expect(deleteRes.status).toBe(401);
+    });
+
+    it('returns 403 Forbidden when Doctor A attempts to create exception for Doctor B', async () => {
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorAUserId,
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: { id: targetDoctorId, isAcceptingBookings: true },
+      });
+
+      const token = await createToken(doctorAUserId);
+      const res = await request(app.getHttpServer())
+        .post(`/doctors/${anotherDoctorId}/availability/exceptions`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ date: '2026-11-20', type: ExceptionType.UNAVAILABLE });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 201 Created when Doctor A creates exception for their own profile', async () => {
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorAUserId,
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: { id: targetDoctorId, isAcceptingBookings: true },
+      });
+      mockPrismaService.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: targetDoctorId,
+      });
+      mockPrismaService.availabilityException.findFirst.mockResolvedValueOnce(
+        null,
+      );
+      mockPrismaService.availabilityException.create.mockResolvedValueOnce({
+        id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        doctorId: targetDoctorId,
+        date: new Date('2026-11-20T00:00:00.000Z'),
+        type: ExceptionType.UNAVAILABLE,
+        startTime: null,
+        endTime: null,
+        reason: 'Conference leave',
+        createdAt: new Date(),
+      });
+
+      const token = await createToken(doctorAUserId);
+      const res = await request(app.getHttpServer())
+        .post(`/doctors/${targetDoctorId}/availability/exceptions`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          date: '2026-11-20',
+          type: ExceptionType.UNAVAILABLE,
+          reason: 'Conference leave',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+      expect(res.body.type).toBe('UNAVAILABLE');
+    });
+
+    it('returns 204 No Content when Doctor A deletes their own exception', async () => {
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorAUserId,
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: { id: targetDoctorId, isAcceptingBookings: true },
+      });
+      mockPrismaService.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: targetDoctorId,
+      });
+      mockPrismaService.availabilityException.findFirst.mockResolvedValueOnce({
+        id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        doctorId: targetDoctorId,
+      });
+      mockPrismaService.availabilityException.delete.mockResolvedValueOnce({
+        id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      });
+
+      const token = await createToken(doctorAUserId);
+      const res = await request(app.getHttpServer())
+        .delete(
+          `/doctors/${targetDoctorId}/availability/exceptions/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+        )
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(204);
     });
   });
 });

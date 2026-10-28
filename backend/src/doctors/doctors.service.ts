@@ -63,14 +63,13 @@ export class DoctorsService {
         where,
         skip,
         take: limit,
-        orderBy: [
-          { userProfile: { fullName: 'asc' } },
-          { id: 'asc' },
-        ],
+        orderBy: [{ userProfile: { fullName: 'asc' } }, { id: 'asc' }],
         select: {
           id: true,
           specialty: true,
           qualification: true,
+          yearsOfExperience: true,
+          avatarUrl: true,
           consultationFee: true,
           bio: true,
           isAcceptingBookings: true,
@@ -80,25 +79,46 @@ export class DoctorsService {
               fullName: true,
             },
           },
+          reviews: {
+            select: {
+              rating: true,
+            },
+          },
         },
       }),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    const data: DoctorSummaryDto[] = doctors.map((doc) => ({
-      id: doc.id,
-      fullName: doc.userProfile.fullName,
-      specialty: doc.specialty,
-      qualification: doc.qualification,
-      consultationFee:
-        doc.consultationFee !== null && doc.consultationFee !== undefined
-          ? Number(doc.consultationFee)
-          : null,
-      bio: doc.bio,
-      isAcceptingBookings: doc.isAcceptingBookings,
-      createdAt: doc.createdAt.toISOString(),
-    }));
+    const data: DoctorSummaryDto[] = doctors.map((doc) => {
+      const reviewCount = doc.reviews?.length || 0;
+      const averageRating =
+        reviewCount > 0
+          ? Number(
+              (
+                doc.reviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount
+              ).toFixed(1),
+            )
+          : null;
+
+      return {
+        id: doc.id,
+        fullName: doc.userProfile.fullName,
+        specialty: doc.specialty,
+        qualification: doc.qualification,
+        yearsOfExperience: doc.yearsOfExperience ?? null,
+        avatarUrl: doc.avatarUrl ?? null,
+        consultationFee:
+          doc.consultationFee !== null && doc.consultationFee !== undefined
+            ? Number(doc.consultationFee)
+            : null,
+        bio: doc.bio,
+        isAcceptingBookings: doc.isAcceptingBookings,
+        averageRating,
+        totalReviews: reviewCount,
+        createdAt: doc.createdAt.toISOString(),
+      };
+    });
 
     return {
       data,
@@ -126,6 +146,8 @@ export class DoctorsService {
         id: true,
         specialty: true,
         qualification: true,
+        yearsOfExperience: true,
+        avatarUrl: true,
         consultationFee: true,
         bio: true,
         isAcceptingBookings: true,
@@ -133,6 +155,11 @@ export class DoctorsService {
         userProfile: {
           select: {
             fullName: true,
+          },
+        },
+        reviews: {
+          select: {
+            rating: true,
           },
         },
       },
@@ -144,17 +171,31 @@ export class DoctorsService {
       );
     }
 
+    const reviewCount = doctor.reviews?.length || 0;
+    const averageRating =
+      reviewCount > 0
+        ? Number(
+            (
+              doctor.reviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount
+            ).toFixed(1),
+          )
+        : null;
+
     return {
       id: doctor.id,
       fullName: doctor.userProfile.fullName,
       specialty: doctor.specialty,
       qualification: doctor.qualification,
+      yearsOfExperience: doctor.yearsOfExperience ?? null,
+      avatarUrl: doctor.avatarUrl ?? null,
       consultationFee:
         doctor.consultationFee !== null && doctor.consultationFee !== undefined
           ? Number(doctor.consultationFee)
           : null,
       bio: doctor.bio,
       isAcceptingBookings: doctor.isAcceptingBookings,
+      averageRating,
+      totalReviews: reviewCount,
       createdAt: doctor.createdAt.toISOString(),
     };
   }

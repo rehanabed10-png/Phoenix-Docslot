@@ -5,13 +5,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GenerateKeyPairResult, generateKeyPair, SignJWT } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AuthService } from '../src/auth/auth.service.js';
-import {
-  AppointmentStatus,
-  UserRole,
-} from '../generated/prisma/client.js';
+import { AppointmentStatus, UserRole } from '../generated/prisma/client.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 describe('Appointments & Slot Availability (e2e)', () => {
@@ -149,7 +154,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         id: targetDoctorId,
         isAcceptingBookings: true,
       });
-      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(
+        null,
+      );
       mockPrismaService.weeklyAvailability.findMany.mockResolvedValueOnce([
         {
           startTime: '09:00',
@@ -176,7 +183,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         id: targetDoctorId,
         isAcceptingBookings: true,
       });
-      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.availabilityException.findUnique.mockResolvedValueOnce(
+        null,
+      );
       mockPrismaService.weeklyAvailability.findMany.mockResolvedValueOnce([
         {
           startTime: '09:00',
@@ -284,11 +293,13 @@ describe('Appointments & Slot Availability (e2e)', () => {
         .send({
           ...validBookingPayload,
           startAt: '2026-11-20T03:42:00.000Z', // 09:12 IST
-          endAt: '2026-11-20T04:12:00.000Z',   // 09:42 IST
+          endAt: '2026-11-20T04:12:00.000Z', // 09:42 IST
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('not available or does not match the doctor\'s schedule');
+      expect(res.body.message).toContain(
+        "not available or does not match the doctor's schedule",
+      );
     });
 
     it('returns 400 Bad Request when requested duration does not match slot duration', async () => {
@@ -312,7 +323,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('not available or does not match the doctor\'s schedule');
+      expect(res.body.message).toContain(
+        "not available or does not match the doctor's schedule",
+      );
     });
 
     it('returns 409 Conflict with doctor message when doctor slot is double-booked', async () => {
@@ -330,7 +343,8 @@ describe('Appointments & Slot Availability (e2e)', () => {
       mockPrismaService.appointment.create.mockRejectedValueOnce({
         code: '23P01',
         constraint: 'Appointment_no_overlapping_bookings',
-        message: 'conflicting key value violates exclusion constraint "Appointment_no_overlapping_bookings"',
+        message:
+          'conflicting key value violates exclusion constraint "Appointment_no_overlapping_bookings"',
       });
 
       const token = await createToken(patientUserId);
@@ -340,7 +354,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         .send(validBookingPayload);
 
       expect(res.status).toBe(409);
-      expect(res.body.message).toBe('The requested appointment time slot is already booked.');
+      expect(res.body.message).toBe(
+        'The requested appointment time slot is already booked.',
+      );
     });
 
     it('returns 409 Conflict with patient message when patient attempts overlapping booking', async () => {
@@ -363,7 +379,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         .send(validBookingPayload);
 
       expect(res.status).toBe(409);
-      expect(res.body.message).toBe('You already have an active appointment scheduled during this time slot.');
+      expect(res.body.message).toBe(
+        'You already have an active appointment scheduled during this time slot.',
+      );
     });
   });
 
@@ -447,7 +465,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toEqual(
-        expect.arrayContaining([expect.stringContaining('limit must not exceed 100')]),
+        expect.arrayContaining([
+          expect.stringContaining('limit must not exceed 100'),
+        ]),
       );
     });
 
@@ -467,7 +487,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toEqual(
-        expect.arrayContaining([expect.stringContaining('page must be at least 1')]),
+        expect.arrayContaining([
+          expect.stringContaining('page must be at least 1'),
+        ]),
       );
     });
   });
@@ -551,7 +573,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         endAt: new Date(Date.now() + 86400000 + 1800000),
         status: AppointmentStatus.BOOKED,
       });
-      mockPrismaService.appointment.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockPrismaService.appointment.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       mockPrismaService.appointment.findUniqueOrThrow.mockResolvedValueOnce({
         id: appointmentId,
         patientId: patientUserId,
@@ -600,7 +624,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         .send({ cancellationReason: 'Cancelled again' });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('Only BOOKED appointments can be cancelled');
+      expect(res.body.message).toContain(
+        'Only BOOKED appointments can be cancelled',
+      );
     });
   });
 
@@ -624,7 +650,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         reason: 'Initial consultation',
       });
       mockPrismaService.appointment.findFirst.mockResolvedValueOnce(null); // No patient conflict at new slot
-      mockPrismaService.appointment.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockPrismaService.appointment.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       mockPrismaService.appointment.findUniqueOrThrow.mockResolvedValueOnce({
         id: appointmentId,
         patientId: patientUserId,
@@ -681,7 +709,9 @@ describe('Appointments & Slot Availability (e2e)', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('not available or does not match the doctor\'s schedule');
+      expect(res.body.message).toContain(
+        "not available or does not match the doctor's schedule",
+      );
     });
 
     it('returns 400 Bad Request when attempting to reschedule an already-cancelled appointment', async () => {
@@ -711,7 +741,240 @@ describe('Appointments & Slot Availability (e2e)', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('Only BOOKED appointments can be rescheduled');
+      expect(res.body.message).toContain(
+        'Only BOOKED appointments can be rescheduled',
+      );
+    });
+  });
+
+  describe('GET /appointments/mine (Doctor schedule & role isolation)', () => {
+    const doctorUserId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const otherDoctorId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+    it('allows a doctor to retrieve appointments more than two days in the future', async () => {
+      const farFutureStart = new Date(Date.now() + 7 * 86400000); // 7 days in future
+      const farFutureEnd = new Date(farFutureStart.getTime() + 1800000);
+
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorUserId,
+        email: 'doctor@hospital.org',
+        fullName: 'Dr. Marcus Vance',
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: {
+          id: targetDoctorId,
+          isAcceptingBookings: true,
+        },
+      });
+
+      mockPrismaService.appointment.findMany.mockResolvedValueOnce([
+        {
+          id: 'future-app-7-days',
+          patientId: patientUserId,
+          doctorId: targetDoctorId,
+          startAt: farFutureStart,
+          endAt: farFutureEnd,
+          status: AppointmentStatus.BOOKED,
+          reason: 'Routine checkup',
+          cancellationReason: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          doctor: {
+            id: targetDoctorId,
+            specialty: 'Cardiology',
+            userProfile: { fullName: 'Dr. Marcus Vance' },
+          },
+          patient: {
+            id: patientUserId,
+            fullName: 'Jane Patient',
+            email: 'patient@example.com',
+          },
+          review: null,
+        },
+      ]);
+
+      const token = await createToken(doctorUserId);
+      const res = await request(app.getHttpServer())
+        .get('/appointments/mine?scope=upcoming')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe('future-app-7-days');
+      expect(res.body[0].startAt).toBe(farFutureStart.toISOString());
+    });
+
+    it('allows a doctor to see past appointments as well as upcoming appointments', async () => {
+      const pastStart = new Date(Date.now() - 3 * 86400000);
+      const futureStart = new Date(Date.now() + 4 * 86400000);
+
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorUserId,
+        email: 'doctor@hospital.org',
+        fullName: 'Dr. Marcus Vance',
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: {
+          id: targetDoctorId,
+          isAcceptingBookings: true,
+        },
+      });
+
+      mockPrismaService.appointment.findMany.mockResolvedValueOnce([
+        {
+          id: 'past-completed-app',
+          patientId: patientUserId,
+          doctorId: targetDoctorId,
+          startAt: pastStart,
+          endAt: new Date(pastStart.getTime() + 1800000),
+          status: AppointmentStatus.COMPLETED,
+          reason: 'Blood pressure test',
+          cancellationReason: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          doctor: {
+            id: targetDoctorId,
+            specialty: 'Cardiology',
+            userProfile: { fullName: 'Dr. Marcus Vance' },
+          },
+          patient: {
+            id: patientUserId,
+            fullName: 'Jane Patient',
+            email: 'patient@example.com',
+          },
+          review: { id: 'rev-1', rating: 5, comment: 'Great visit' },
+        },
+        {
+          id: 'future-booked-app',
+          patientId: patientUserId,
+          doctorId: targetDoctorId,
+          startAt: futureStart,
+          endAt: new Date(futureStart.getTime() + 1800000),
+          status: AppointmentStatus.BOOKED,
+          reason: 'Followup',
+          cancellationReason: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          doctor: {
+            id: targetDoctorId,
+            specialty: 'Cardiology',
+            userProfile: { fullName: 'Dr. Marcus Vance' },
+          },
+          patient: {
+            id: patientUserId,
+            fullName: 'Jane Patient',
+            email: 'patient@example.com',
+          },
+          review: null,
+        },
+      ]);
+
+      const token = await createToken(doctorUserId);
+      const res = await request(app.getHttpServer())
+        .get('/appointments/mine')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].status).toBe('COMPLETED');
+      expect(res.body[1].status).toBe('BOOKED');
+    });
+
+    it('strictly isolates doctor schedule query to only their assigned doctorId', async () => {
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorUserId,
+        email: 'doctor@hospital.org',
+        fullName: 'Dr. Marcus Vance',
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: {
+          id: targetDoctorId,
+          isAcceptingBookings: true,
+        },
+      });
+
+      mockPrismaService.appointment.findMany.mockResolvedValueOnce([]);
+
+      const token = await createToken(doctorUserId);
+      const res = await request(app.getHttpServer())
+        .get('/appointments/mine')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(mockPrismaService.appointment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            doctorId: targetDoctorId,
+          }),
+        }),
+      );
+    });
+
+    it('returns 403 Forbidden when a doctor attempts to view another doctor appointment by ID', async () => {
+      const foreignAppointmentId = '88888888-8888-4888-8888-888888888888';
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorUserId,
+        email: 'doctor@hospital.org',
+        fullName: 'Dr. Marcus Vance',
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: {
+          id: targetDoctorId,
+          isAcceptingBookings: true,
+        },
+      });
+
+      mockPrismaService.appointment.findUnique.mockResolvedValueOnce({
+        id: foreignAppointmentId,
+        patientId: patientUserId,
+        doctorId: otherDoctorId,
+        startAt: new Date(Date.now() + 86400000),
+        endAt: new Date(Date.now() + 86400000 + 1800000),
+        status: AppointmentStatus.BOOKED,
+      });
+
+      const token = await createToken(doctorUserId);
+      const res = await request(app.getHttpServer())
+        .get(`/appointments/${foreignAppointmentId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('You do not have permission');
+    });
+
+    it('returns 403 Forbidden when a doctor attempts to update status on another doctor appointment', async () => {
+      const foreignAppointmentId = '88888888-8888-4888-8888-888888888888';
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: doctorUserId,
+        email: 'doctor@hospital.org',
+        fullName: 'Dr. Marcus Vance',
+        role: UserRole.DOCTOR,
+        isActive: true,
+        doctorProfile: {
+          id: targetDoctorId,
+          isAcceptingBookings: true,
+        },
+      });
+
+      mockPrismaService.appointment.findUnique.mockResolvedValueOnce({
+        id: foreignAppointmentId,
+        patientId: patientUserId,
+        doctorId: otherDoctorId,
+        startAt: new Date(Date.now() + 86400000),
+        endAt: new Date(Date.now() + 86400000 + 1800000),
+        status: AppointmentStatus.BOOKED,
+      });
+
+      const token = await createToken(doctorUserId);
+      const res = await request(app.getHttpServer())
+        .patch(`/appointments/${foreignAppointmentId}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'COMPLETED' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('assigned to another doctor');
     });
   });
 });

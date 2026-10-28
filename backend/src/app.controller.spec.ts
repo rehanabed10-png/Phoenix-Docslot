@@ -1,5 +1,4 @@
 import { ServiceUnavailableException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -11,23 +10,15 @@ describe('AppController', () => {
     $queryRaw: ReturnType<typeof vi.fn>;
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     mockPrismaService = {
       $queryRaw: vi.fn(),
     };
 
-    const app: TestingModule = await Test.createTestingModule({
-      controllers: [AppController],
-      providers: [
-        AppService,
-        {
-          provide: PrismaService,
-          useValue: mockPrismaService,
-        },
-      ],
-    }).compile();
-
-    appController = app.get<AppController>(AppController);
+    const appService = new AppService(
+      mockPrismaService as unknown as PrismaService,
+    );
+    appController = new AppController(appService);
   });
 
   describe('GET /health', () => {

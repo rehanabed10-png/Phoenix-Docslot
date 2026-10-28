@@ -19,7 +19,10 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "prisma:seed": "node --import jiti/register prisma/seed.ts",
+    "verify:seed-runtime": "node --import jiti/register -e \"import('./prisma/seed.ts').then(() => console.log('Seed runner runtime verified!'))\"",
+    "confirm:demo-users": "node --import jiti/register prisma/confirm-demo-users.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.1",
@@ -27,6 +30,7 @@
     "@nestjs/platform-express": "^12.3.1",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.118.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^18.0.9",
@@ -45,6 +49,7 @@
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
+    "jiti": "^2.7.0",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",
@@ -54,5 +59,8 @@
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
+  },
+  "prisma": {
+    "seed": "node --import jiti/register prisma/seed.ts"
   }
 }

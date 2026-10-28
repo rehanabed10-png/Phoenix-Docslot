@@ -8,6 +8,7 @@ import { AvailabilityModule } from './availability/availability.module.js';
 import { PostgresExclusionFilter } from './common/filters/postgres-exclusion.filter.js';
 import { DoctorsModule } from './doctors/doctors.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { ReviewsModule } from './reviews/reviews.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     DoctorsModule,
     AvailabilityModule,
     AppointmentsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -25,7 +25,9 @@ export class SupabaseAuthGuard implements CanActivate {
     }
 
     if (!authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Malformed authorization header format. Expected "Bearer <token>".');
+      throw new UnauthorizedException(
+        'Malformed authorization header format. Expected "Bearer <token>".',
+      );
     }
 
     const token = authHeader.slice(7).trim();
@@ -33,8 +35,19 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication token is empty.');
     }
 
-    const user = await this.authService.authenticate(token);
-    request.user = user;
-    return true;
+    try {
+      const user = await this.authService.authenticate(token);
+      request.user = user;
+      return true;
+    } catch (err) {
+      if (err instanceof UnauthorizedException) {
+        throw err;
+      }
+      throw new UnauthorizedException(
+        err instanceof Error
+          ? err.message
+          : 'Authentication verification failed.',
+      );
+    }
   }
 }

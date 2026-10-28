@@ -467,7 +467,10 @@ describe('AvailabilityService', () => {
         isAcceptingBookings: false,
       });
 
-      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+      const result = await service.getAvailableSlots(
+        sampleDoctorId,
+        futureDate,
+      );
 
       expect(result.doctorId).toBe(sampleDoctorId);
       expect(result.date).toBe(futureDate);
@@ -486,7 +489,10 @@ describe('AvailabilityService', () => {
         type: ExceptionType.UNAVAILABLE,
       });
 
-      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+      const result = await service.getAvailableSlots(
+        sampleDoctorId,
+        futureDate,
+      );
 
       expect(result.slots).toEqual([]);
     });
@@ -506,7 +512,10 @@ describe('AvailabilityService', () => {
       ]);
       mockPrisma.appointment.findMany.mockResolvedValueOnce([]);
 
-      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+      const result = await service.getAvailableSlots(
+        sampleDoctorId,
+        futureDate,
+      );
 
       expect(result.slots).toHaveLength(4);
       expect(result.slots[0]).toMatchObject({
@@ -545,7 +554,10 @@ describe('AvailabilityService', () => {
         },
       ]);
 
-      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+      const result = await service.getAvailableSlots(
+        sampleDoctorId,
+        futureDate,
+      );
 
       expect(result.slots).toHaveLength(3);
       const startTimes = result.slots.map((s) => s.startTime);
@@ -571,7 +583,10 @@ describe('AvailabilityService', () => {
       });
       mockPrisma.appointment.findMany.mockResolvedValueOnce([]);
 
-      const result = await service.getAvailableSlots(sampleDoctorId, futureDate);
+      const result = await service.getAvailableSlots(
+        sampleDoctorId,
+        futureDate,
+      );
 
       expect(result.slots).toHaveLength(3);
       expect(result.slots[0].startTime).toBe('14:00');
@@ -583,6 +598,195 @@ describe('AvailabilityService', () => {
 
       await expect(
         service.getAvailableSlots('non-existent-id', futureDate),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('createException', () => {
+    it('creates UNAVAILABLE exception successfully', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.availabilityException.create.mockResolvedValueOnce({
+        id: 'exc-1',
+        doctorId: sampleDoctorId,
+        date: new Date('2026-11-25T00:00:00.000Z'),
+        type: ExceptionType.UNAVAILABLE,
+        startTime: null,
+        endTime: null,
+        reason: 'Conference leave',
+        createdAt: new Date(),
+      });
+
+      const result = await service.createException(sampleDoctorId, {
+        date: '2026-11-25',
+        type: ExceptionType.UNAVAILABLE,
+        reason: 'Conference leave',
+      });
+
+      expect(result.id).toBe('exc-1');
+      expect(result.type).toBe(ExceptionType.UNAVAILABLE);
+      expect(mockPrisma.availabilityException.create).toHaveBeenCalledWith({
+        data: {
+          doctorId: sampleDoctorId,
+          date: new Date('2026-11-25T00:00:00.000Z'),
+          type: ExceptionType.UNAVAILABLE,
+          startTime: null,
+          endTime: null,
+          reason: 'Conference leave',
+        },
+      });
+    });
+
+    it('creates CUSTOM_HOURS exception with valid times', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.availabilityException.create.mockResolvedValueOnce({
+        id: 'exc-custom-1',
+        doctorId: sampleDoctorId,
+        date: new Date('2026-11-25T00:00:00.000Z'),
+        type: ExceptionType.CUSTOM_HOURS,
+        startTime: '10:00',
+        endTime: '14:00',
+        reason: 'Late shift',
+        createdAt: new Date(),
+      });
+
+      const result = await service.createException(sampleDoctorId, {
+        date: '2026-11-25',
+        type: ExceptionType.CUSTOM_HOURS,
+        startTime: '10:00',
+        endTime: '14:00',
+        reason: 'Late shift',
+      });
+
+      expect(result.id).toBe('exc-custom-1');
+      expect(result.type).toBe(ExceptionType.CUSTOM_HOURS);
+      expect(result.startTime).toBe('10:00');
+      expect(result.endTime).toBe('14:00');
+    });
+
+    it('rejects UNAVAILABLE exception if startTime or endTime is supplied', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+
+      await expect(
+        service.createException(sampleDoctorId, {
+          date: '2026-11-25',
+          type: ExceptionType.UNAVAILABLE,
+          startTime: '09:00',
+        }),
+      ).rejects.toThrow(
+        'startTime and endTime must be omitted when exception type is UNAVAILABLE.',
+      );
+    });
+
+    it('rejects CUSTOM_HOURS exception if startTime or endTime is missing', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+
+      await expect(
+        service.createException(sampleDoctorId, {
+          date: '2026-11-25',
+          type: ExceptionType.CUSTOM_HOURS,
+          startTime: '09:00',
+        }),
+      ).rejects.toThrow(
+        'startTime and endTime are required when exception type is CUSTOM_HOURS.',
+      );
+    });
+
+    it('rejects CUSTOM_HOURS exception if startTime is not strictly before endTime', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+
+      await expect(
+        service.createException(sampleDoctorId, {
+          date: '2026-11-25',
+          type: ExceptionType.CUSTOM_HOURS,
+          startTime: '14:00',
+          endTime: '12:00',
+        }),
+      ).rejects.toThrow(
+        'startTime (14:00) must be strictly before endTime (12:00) for CUSTOM_HOURS.',
+      );
+    });
+
+    it('rejects duplicate exception on the same date with 409 Conflict', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.findFirst.mockResolvedValueOnce({
+        id: 'existing-exc',
+        date: new Date('2026-11-25T00:00:00.000Z'),
+      });
+
+      await expect(
+        service.createException(sampleDoctorId, {
+          date: '2026-11-25',
+          type: ExceptionType.UNAVAILABLE,
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockPrisma.availabilityException.create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException if doctor does not exist', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.createException('missing-doctor', {
+          date: '2026-11-25',
+          type: ExceptionType.UNAVAILABLE,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deleteException', () => {
+    it('deletes exception successfully when owned by doctor', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.findFirst.mockResolvedValueOnce({
+        id: 'exc-to-delete',
+        doctorId: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.delete.mockResolvedValueOnce({
+        id: 'exc-to-delete',
+      });
+
+      await service.deleteException(sampleDoctorId, 'exc-to-delete');
+
+      expect(mockPrisma.availabilityException.delete).toHaveBeenCalledWith({
+        where: { id: 'exc-to-delete' },
+      });
+    });
+
+    it('throws NotFoundException when exception does not exist or does not belong to doctor', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: sampleDoctorId,
+      });
+      mockPrisma.availabilityException.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.deleteException(sampleDoctorId, 'non-existent-exc'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrisma.availabilityException.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException if doctor does not exist', async () => {
+      mockPrisma.doctorProfile.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.deleteException('missing-doctor', 'exc-1'),
       ).rejects.toThrow(NotFoundException);
     });
   });

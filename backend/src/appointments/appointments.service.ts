@@ -5,10 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  AppointmentStatus,
-  UserRole,
-} from '../../generated/prisma/client.js';
+import { AppointmentStatus, UserRole } from '../../generated/prisma/client.js';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface.js';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { getLocalDateStringInClinicTimezone } from '../availability/config/availability.config.js';
@@ -23,6 +20,9 @@ import { AppointmentResponseDto } from './dto/appointment-response.dto.js';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto.js';
+import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto.js';
+
+export const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 @Injectable()
 export class AppointmentsService {
@@ -52,6 +52,12 @@ export class AppointmentsService {
       fullName: string;
       email: string;
     } | null;
+    review?: {
+      id: string;
+      rating: number;
+      comment: string | null;
+      isDemo: boolean;
+    } | null;
   }): AppointmentResponseDto {
     return {
       id: app.id,
@@ -78,6 +84,14 @@ export class AppointmentsService {
             email: app.patient.email,
           }
         : undefined,
+      review: app.review
+        ? {
+            id: app.review.id,
+            rating: app.review.rating,
+            comment: app.review.comment,
+            isDemo: app.review.isDemo,
+          }
+        : null,
     };
   }
 
@@ -104,7 +118,9 @@ export class AppointmentsService {
     const endAt = new Date(dto.endAt);
 
     if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
-      throw new BadRequestException('Invalid startAt or endAt timestamp format.');
+      throw new BadRequestException(
+        'Invalid startAt or endAt timestamp format.',
+      );
     }
 
     if (endAt <= startAt) {
@@ -122,11 +138,15 @@ export class AppointmentsService {
     });
 
     if (!doctor) {
-      throw new NotFoundException(`Doctor with ID "${dto.doctorId}" was not found.`);
+      throw new NotFoundException(
+        `Doctor with ID "${dto.doctorId}" was not found.`,
+      );
     }
 
     if (!doctor.isAcceptingBookings) {
-      throw new BadRequestException('This doctor is currently not accepting new bookings.');
+      throw new BadRequestException(
+        'This doctor is currently not accepting new bookings.',
+      );
     }
 
     // 4. Validate requested slot against doctor's schedule and availability
@@ -138,7 +158,8 @@ export class AppointmentsService {
 
     const validSlot = availability.slots.find(
       (slot) =>
-        slot.startAt === startAt.toISOString() && slot.endAt === endAt.toISOString(),
+        slot.startAt === startAt.toISOString() &&
+        slot.endAt === endAt.toISOString(),
     );
 
     if (!validSlot) {
@@ -155,7 +176,9 @@ export class AppointmentsService {
       });
 
       if (!patient || !patient.isActive) {
-        throw new BadRequestException('Target patient profile was not found or is deactivated.');
+        throw new BadRequestException(
+          'Target patient profile was not found or is deactivated.',
+        );
       }
     }
 
@@ -242,14 +265,60 @@ export class AppointmentsService {
       where.patientId = currentUser.id;
     } else if (currentUser.role === UserRole.DOCTOR) {
       if (!currentUser.doctorId) {
-        throw new ForbiddenException('Doctor profile is not associated with this account.');
+        throw new ForbiddenException(
+          'Doctor profile is not associated with this account.',
+        );
       }
       where.doctorId = currentUser.doctorId;
     }
 
+    // Determine target date filter or scope
+    let targetDateStr: string | undefined;
+    if (query?.today || query?.scope === 'today') {
+      targetDateStr = getLocalDateStringInClinicTimezone(new Date());
+    } else if (query?.date) {
+      targetDateStr = query.date;
+    }
+
+    if (targetDateStr) {
+      const dayStartUTC = new Date(`${targetDateStr}T00:00:00+05:30`);
+      const dayEndUTC = new Date(`${targetDateStr}T23:59:59.999+05:30`);
+      where.startAt = {
+        gte: dayStartUTC,
+        lte: dayEndUTC,
+      };
+    } else if (query?.scope === 'upcoming') {
+      const now = new Date();
+      where.startAt = {
+        gte: now,
+      };
+      where.status = {
+        in: [AppointmentStatus.BOOKED],
+      };
+    } else if (query?.scope === 'past') {
+      const now = new Date();
+      where.OR = [
+        { startAt: { lt: now } },
+        {
+          status: {
+            in: [
+              AppointmentStatus.COMPLETED,
+              AppointmentStatus.NO_SHOW,
+              AppointmentStatus.CANCELLED,
+            ],
+          },
+        },
+      ];
+    }
+
+    // Order defaults to 'asc' if querying a specific date or upcoming or today, else 'desc'
+    const orderDirection: 'asc' | 'desc' =
+      query?.order ??
+      (targetDateStr || query?.scope === 'upcoming' ? 'asc' : 'desc');
+
     const appointments = await this.prisma.appointment.findMany({
       where,
-      orderBy: { startAt: 'desc' },
+      orderBy: { startAt: orderDirection },
       skip,
       take: limit,
       include: {
@@ -263,10 +332,39 @@ export class AppointmentsService {
         patient: {
           select: { id: true, fullName: true, email: true },
         },
+        review: {
+          select: { id: true, rating: true, comment: true, isDemo: true },
+        },
       },
     });
 
     return appointments.map((app) => this.mapAppointmentResponse(app));
+  }
+
+  /**
+   * Retrieves today's appointments for the authenticated doctor in Asia/Kolkata timezone
+   * in ascending start-time order.
+   */
+  async getTodayDoctorSchedule(
+    currentUser: AuthenticatedUser,
+    query?: AppointmentQueryDto,
+  ): Promise<AppointmentResponseDto[]> {
+    if (currentUser.role === UserRole.PATIENT) {
+      throw new ForbiddenException(
+        'Patients are not authorized to view doctor daily schedules.',
+      );
+    }
+
+    const todayQuery = new AppointmentQueryDto();
+    if (query) {
+      todayQuery.page = query.page;
+      todayQuery.limit = query.limit;
+      todayQuery.date = query.date;
+    }
+    todayQuery.today = true;
+    todayQuery.order = 'asc';
+
+    return this.getMyAppointments(currentUser, todayQuery);
   }
 
   /**
@@ -302,7 +400,9 @@ export class AppointmentsService {
     const isAdmin = currentUser.role === UserRole.ADMIN;
 
     if (!isOwnerPatient && !isAssignedDoctor && !isAdmin) {
-      throw new ForbiddenException('You do not have permission to view this appointment.');
+      throw new ForbiddenException(
+        'You do not have permission to view this appointment.',
+      );
     }
 
     return this.mapAppointmentResponse(appointment);
@@ -330,7 +430,9 @@ export class AppointmentsService {
     const isAdmin = currentUser.role === UserRole.ADMIN;
 
     if (!isOwnerPatient && !isAssignedDoctor && !isAdmin) {
-      throw new ForbiddenException('You do not have permission to cancel this appointment.');
+      throw new ForbiddenException(
+        'You do not have permission to cancel this appointment.',
+      );
     }
 
     if (appointment.status !== AppointmentStatus.BOOKED) {
@@ -339,8 +441,17 @@ export class AppointmentsService {
       );
     }
 
-    if (appointment.startAt <= new Date()) {
-      throw new BadRequestException('Cannot cancel an appointment that has already started or elapsed.');
+    const now = new Date();
+    if (appointment.startAt <= now) {
+      throw new BadRequestException(
+        'Cannot cancel an appointment that has already started or elapsed.',
+      );
+    }
+
+    if (appointment.startAt.getTime() - now.getTime() < TWO_HOURS_MS) {
+      throw new BadRequestException(
+        'Appointments cannot be cancelled when less than two hours remain before the scheduled start time.',
+      );
     }
 
     const updatedAppointment = await this.prisma.$transaction(async (tx) => {
@@ -351,7 +462,9 @@ export class AppointmentsService {
         },
         data: {
           status: AppointmentStatus.CANCELLED,
-          cancellationReason: dto.cancellationReason ? dto.cancellationReason.trim() : null,
+          cancellationReason: dto.cancellationReason
+            ? dto.cancellationReason.trim()
+            : null,
         },
       });
 
@@ -362,7 +475,9 @@ export class AppointmentsService {
         });
 
         if (!current) {
-          throw new NotFoundException(`Appointment with ID "${id}" was not found.`);
+          throw new NotFoundException(
+            `Appointment with ID "${id}" was not found.`,
+          );
         }
 
         throw new BadRequestException(
@@ -430,7 +545,9 @@ export class AppointmentsService {
     const isAdmin = currentUser.role === UserRole.ADMIN;
 
     if (!isOwnerPatient && !isAssignedDoctor && !isAdmin) {
-      throw new ForbiddenException('You do not have permission to reschedule this appointment.');
+      throw new ForbiddenException(
+        'You do not have permission to reschedule this appointment.',
+      );
     }
 
     if (appointment.status !== AppointmentStatus.BOOKED) {
@@ -439,15 +556,26 @@ export class AppointmentsService {
       );
     }
 
-    if (appointment.startAt <= new Date()) {
-      throw new BadRequestException('Cannot reschedule an appointment that has already started or elapsed.');
+    const now = new Date();
+    if (appointment.startAt <= now) {
+      throw new BadRequestException(
+        'Cannot reschedule an appointment that has already started or elapsed.',
+      );
+    }
+
+    if (appointment.startAt.getTime() - now.getTime() < TWO_HOURS_MS) {
+      throw new BadRequestException(
+        'Appointments cannot be rescheduled when less than two hours remain before the scheduled start time.',
+      );
     }
 
     const newStartAt = new Date(dto.startAt);
     const newEndAt = new Date(dto.endAt);
 
     if (isNaN(newStartAt.getTime()) || isNaN(newEndAt.getTime())) {
-      throw new BadRequestException('Invalid startAt or endAt timestamp format.');
+      throw new BadRequestException(
+        'Invalid startAt or endAt timestamp format.',
+      );
     }
 
     if (newEndAt <= newStartAt) {
@@ -455,7 +583,9 @@ export class AppointmentsService {
     }
 
     if (newStartAt <= new Date()) {
-      throw new BadRequestException('Cannot reschedule to an appointment slot in the past.');
+      throw new BadRequestException(
+        'Cannot reschedule to an appointment slot in the past.',
+      );
     }
 
     // Validate requested reschedule slot against doctor's schedule and availability
@@ -518,7 +648,9 @@ export class AppointmentsService {
         });
 
         if (!current) {
-          throw new NotFoundException(`Appointment with ID "${id}" was not found.`);
+          throw new NotFoundException(
+            `Appointment with ID "${id}" was not found.`,
+          );
         }
 
         throw new BadRequestException(
@@ -555,6 +687,112 @@ export class AppointmentsService {
             previousEndAt: appointment.endAt.toISOString(),
             newStartAt: updated.startAt.toISOString(),
             newEndAt: updated.endAt.toISOString(),
+          },
+        },
+      });
+
+      return updated;
+    });
+
+    return this.mapAppointmentResponse(updatedAppointment);
+  }
+
+  /**
+   * Updates appointment attendance status (COMPLETED or NO_SHOW).
+   * Authorized actors: assigned doctor, or administrator.
+   */
+  async updateAppointmentStatus(
+    currentUser: AuthenticatedUser,
+    id: string,
+    dto: UpdateAppointmentStatusDto,
+  ): Promise<AppointmentResponseDto> {
+    if (currentUser.role === UserRole.PATIENT) {
+      throw new ForbiddenException(
+        'Patients are not authorized to update appointment attendance status.',
+      );
+    }
+
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(`Appointment with ID "${id}" was not found.`);
+    }
+
+    const isAdmin = currentUser.role === UserRole.ADMIN;
+    const isAssignedDoctor =
+      currentUser.role === UserRole.DOCTOR &&
+      currentUser.doctorId &&
+      appointment.doctorId === currentUser.doctorId;
+
+    if (!isAdmin && !isAssignedDoctor) {
+      throw new ForbiddenException(
+        'You are not authorized to update an appointment assigned to another doctor.',
+      );
+    }
+
+    if (appointment.status !== AppointmentStatus.BOOKED) {
+      throw new BadRequestException(
+        `Cannot update status of an appointment with status "${appointment.status}". Only BOOKED appointments can be marked as ${dto.status}.`,
+      );
+    }
+
+    const updatedAppointment = await this.prisma.$transaction(async (tx) => {
+      const updateResult = await tx.appointment.updateMany({
+        where: {
+          id,
+          status: AppointmentStatus.BOOKED,
+        },
+        data: {
+          status: dto.status,
+        },
+      });
+
+      if (updateResult.count === 0) {
+        const current = await tx.appointment.findUnique({
+          where: { id },
+          select: { id: true, status: true },
+        });
+
+        if (!current) {
+          throw new NotFoundException(
+            `Appointment with ID "${id}" was not found.`,
+          );
+        }
+
+        throw new BadRequestException(
+          `Cannot update status of an appointment with status "${current.status}". Only BOOKED appointments can be marked as ${dto.status}.`,
+        );
+      }
+
+      const updated = await tx.appointment.findUniqueOrThrow({
+        where: { id },
+        include: {
+          doctor: {
+            select: {
+              id: true,
+              specialty: true,
+              userProfile: { select: { fullName: true } },
+            },
+          },
+          patient: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: currentUser.id,
+          action: `APPOINTMENT_MARKED_${dto.status}`,
+          entityType: 'Appointment',
+          entityId: id,
+          details: {
+            updatedBy: currentUser.id,
+            role: currentUser.role,
+            previousStatus: appointment.status,
+            newStatus: dto.status,
           },
         },
       });

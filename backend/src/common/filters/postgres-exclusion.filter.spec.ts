@@ -48,9 +48,9 @@ describe('PostgresExclusionFilter', () => {
     });
 
     it('detects nested error code in Prisma meta.code', () => {
-      expect(
-        isPostgresExclusionViolation({ meta: { code: '23P01' } }),
-      ).toBe(true);
+      expect(isPostgresExclusionViolation({ meta: { code: '23P01' } })).toBe(
+        true,
+      );
     });
 
     it('detects nested error code in Prisma meta.database_error', () => {
@@ -74,7 +74,9 @@ describe('PostgresExclusionFilter', () => {
       expect(isPostgresExclusionViolation(undefined)).toBe(false);
       expect(isPostgresExclusionViolation({})).toBe(false);
       expect(isPostgresExclusionViolation({ code: '23505' })).toBe(false);
-      expect(isPostgresExclusionViolation(new Error('Connection timed out'))).toBe(false);
+      expect(
+        isPostgresExclusionViolation(new Error('Connection timed out')),
+      ).toBe(false);
     });
   });
 

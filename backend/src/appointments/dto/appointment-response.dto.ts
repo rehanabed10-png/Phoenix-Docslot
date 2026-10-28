@@ -12,6 +12,13 @@ export class AppointmentPatientDto {
   email!: string;
 }
 
+export class AppointmentReviewSummaryDto {
+  id!: string;
+  rating!: number;
+  comment!: string | null;
+  isDemo!: boolean;
+}
+
 export class AppointmentResponseDto {
   id!: string;
   patientId!: string;
@@ -25,4 +32,5 @@ export class AppointmentResponseDto {
   updatedAt!: string;
   doctor?: AppointmentDoctorDto;
   patient?: AppointmentPatientDto;
+  review?: AppointmentReviewSummaryDto | null;
 }

@@ -5,7 +5,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GenerateKeyPairResult, generateKeyPair, SignJWT } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AuthService } from '../src/auth/auth.service.js';
 import { UserRole } from '../generated/prisma/client.js';
@@ -35,6 +43,8 @@ describe('AuthController (e2e)', () => {
     mockPrismaService = {
       userProfile: {
         findUnique: vi.fn(),
+        create: vi.fn(),
+        upsert: vi.fn(),
       },
       $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
     };
@@ -84,7 +94,9 @@ describe('AuthController (e2e)', () => {
         .set('Authorization', 'Basic invalid-token');
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toContain('Malformed authorization header format');
+      expect(res.body.message).toContain(
+        'Malformed authorization header format',
+      );
     });
 
     it('returns 401 when token is expired', async () => {
@@ -94,7 +106,9 @@ describe('AuthController (e2e)', () => {
         .set('Authorization', `Bearer ${expiredToken}`);
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toContain('Invalid or expired authentication token');
+      expect(res.body.message).toContain(
+        'Invalid or expired authentication token',
+      );
     });
 
     it('returns 401 when user profile is not found in database', async () => {
@@ -106,7 +120,9 @@ describe('AuthController (e2e)', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(401);
-      expect(res.body.message).toContain('User profile not found in application database');
+      expect(res.body.message).toContain(
+        'User profile not found in application database',
+      );
     });
 
     it('returns 401 when user account is deactivated', async () => {
@@ -186,5 +202,142 @@ describe('AuthController (e2e)', () => {
         doctorId,
       });
     });
+
+    it('returns 401 Unauthorized (never 500) when token verification fails unexpectedly', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', 'Bearer invalid.corrupted.token');
+
+      expect(res.status).toBe(401);
+      expect(res.body.statusCode).toBe(401);
+      expect(res.body.message).toBe('Invalid or expired authentication token.');
+    });
+  });
+
+  describe('Authenticated endpoints with invalid tokens return 401, not 500', () => {
+    it('GET /appointments/mine returns 401 with invalid token', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/appointments/mine')
+        .set('Authorization', 'Bearer invalid.corrupted.token');
+
+      expect(res.status).toBe(401);
+      expect(res.body.statusCode).toBe(401);
+      expect(res.body.message).toBe('Invalid or expired authentication token.');
+    });
+
+    it('GET /appointments/today returns 401 with invalid token', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/appointments/today')
+        .set('Authorization', 'Bearer invalid.corrupted.token');
+
+      expect(res.status).toBe(401);
+      expect(res.body.statusCode).toBe(401);
+      expect(res.body.message).toBe('Invalid or expired authentication token.');
+    });
+  });
+
+  describe('POST /auth/register', () => {
+    it('creates a new patient profile and strictly enforces PATIENT role', async () => {
+      const newUserId = '99999999-9999-4999-8999-999999999999';
+      const token = await createToken(newUserId);
+
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.userProfile.upsert.mockResolvedValueOnce({
+        id: newUserId,
+        email: 'user@example.com',
+        fullName: 'Jane Doe',
+        phone: '+1-555-9999',
+        role: UserRole.PATIENT,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          fullName: 'Jane Doe',
+          phone: '+1-555-9999',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        id: newUserId,
+        email: 'user@example.com',
+        fullName: 'Jane Doe',
+        phone: '+1-555-9999',
+        role: UserRole.PATIENT,
+        isActive: true,
+      });
+
+      // Verify Prisma upsert was called with PATIENT role
+      expect(mockPrismaService.userProfile.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            role: UserRole.PATIENT,
+            fullName: 'Jane Doe',
+          }),
+        }),
+      );
+    });
+
+    it('rejects registration without authentication token with 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          fullName: 'Jane Doe',
+        });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('idempotently handles repeated registration without duplicate creation or role modification', async () => {
+      const existingUserId = '88888888-8888-4888-8888-888888888888';
+      const token = await createToken(existingUserId);
+
+      mockPrismaService.userProfile.upsert.mockResolvedValue({
+        id: existingUserId,
+        email: 'user@example.com',
+        fullName: 'Jane Doe Updated',
+        phone: '+1-555-8888',
+        role: UserRole.PATIENT,
+        isActive: true,
+      });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          fullName: 'Jane Doe Updated',
+          phone: '+1-555-8888',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe(UserRole.PATIENT);
+      expect(mockPrismaService.userProfile.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: existingUserId },
+          create: expect.objectContaining({
+            role: UserRole.PATIENT,
+          }),
+        }),
+      );
+    });
+
+    it('rejects client-supplied role elevation attempt with 400 Bad Request', async () => {
+      const token = await createToken('77777777-7777-4777-8777-777777777777');
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          fullName: 'Malicious User',
+          role: 'ADMIN',
+        });
+
+      expect(res.status).toBe(400);
+    });
   });
 });
+

@@ -11,7 +11,9 @@ describe('RolesGuard', () => {
     getAllAndOverride: ReturnType<typeof vi.fn>;
   };
 
-  const createMockContext = (user?: Partial<AuthenticatedUser>): ExecutionContext => {
+  const createMockContext = (
+    user?: Partial<AuthenticatedUser>,
+  ): ExecutionContext => {
     return {
       getHandler: () => ({}),
       getClass: () => ({}),

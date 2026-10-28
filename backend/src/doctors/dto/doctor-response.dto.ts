@@ -3,9 +3,13 @@ export interface DoctorSummaryDto {
   fullName: string;
   specialty: string;
   qualification: string | null;
+  yearsOfExperience: number | null;
+  avatarUrl: string | null;
   consultationFee: number | null;
   bio: string | null;
   isAcceptingBookings: boolean;
+  averageRating: number | null;
+  totalReviews: number;
   createdAt: string;
 }
 

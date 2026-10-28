@@ -26,7 +26,10 @@ export function isPostgresExclusionViolation(error: unknown): boolean {
   }
 
   // Nested in driverException (Prisma / driver adapter pattern)
-  if (err.driverException && isPostgresExclusionViolation(err.driverException)) {
+  if (
+    err.driverException &&
+    isPostgresExclusionViolation(err.driverException)
+  ) {
     return true;
   }
 
@@ -45,7 +48,10 @@ export function isPostgresExclusionViolation(error: unknown): boolean {
 
   // Fallback to error message content
   if (typeof err.message === 'string') {
-    if (err.message.includes('23P01') || err.message.includes('exclusion_violation')) {
+    if (
+      err.message.includes('23P01') ||
+      err.message.includes('exclusion_violation')
+    ) {
       return true;
     }
   }
@@ -64,7 +70,11 @@ export function extractExclusionConstraintName(error: unknown): string | null {
     return err.constraint;
   }
 
-  if (err.cause && typeof err.cause === 'object' && typeof err.cause.constraint === 'string') {
+  if (
+    err.cause &&
+    typeof err.cause === 'object' &&
+    typeof err.cause.constraint === 'string'
+  ) {
     return err.cause.constraint;
   }
 

@@ -4,7 +4,15 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
@@ -69,7 +77,9 @@ describe('DoctorsController (e2e)', () => {
   describe('GET /doctors', () => {
     it('returns 200 and paginated doctor list with default pagination', async () => {
       mockPrismaService.doctorProfile.count.mockResolvedValueOnce(1);
-      mockPrismaService.doctorProfile.findMany.mockResolvedValueOnce([sampleDoctor]);
+      mockPrismaService.doctorProfile.findMany.mockResolvedValueOnce([
+        sampleDoctor,
+      ]);
 
       const res = await request(app.getHttpServer()).get('/doctors');
 
@@ -109,14 +119,12 @@ describe('DoctorsController (e2e)', () => {
       mockPrismaService.doctorProfile.count.mockResolvedValueOnce(0);
       mockPrismaService.doctorProfile.findMany.mockResolvedValueOnce([]);
 
-      const res = await request(app.getHttpServer())
-        .get('/doctors')
-        .query({
-          search: 'House',
-          specialty: 'Neurology',
-          page: 2,
-          limit: 5,
-        });
+      const res = await request(app.getHttpServer()).get('/doctors').query({
+        search: 'House',
+        specialty: 'Neurology',
+        page: 2,
+        limit: 5,
+      });
 
       expect(res.status).toBe(200);
       expect(mockPrismaService.doctorProfile.findMany).toHaveBeenCalledWith(
@@ -130,7 +138,11 @@ describe('DoctorsController (e2e)', () => {
               { specialty: { equals: 'Neurology', mode: 'insensitive' } },
               {
                 OR: [
-                  { userProfile: { fullName: { contains: 'House', mode: 'insensitive' } } },
+                  {
+                    userProfile: {
+                      fullName: { contains: 'House', mode: 'insensitive' },
+                    },
+                  },
                   { specialty: { contains: 'House', mode: 'insensitive' } },
                 ],
               },
@@ -195,7 +207,9 @@ describe('DoctorsController (e2e)', () => {
 
   describe('GET /doctors/:id', () => {
     it('returns 200 and public profile for a valid active doctor', async () => {
-      mockPrismaService.doctorProfile.findFirst.mockResolvedValueOnce(sampleDoctor);
+      mockPrismaService.doctorProfile.findFirst.mockResolvedValueOnce(
+        sampleDoctor,
+      );
 
       const res = await request(app.getHttpServer()).get(
         `/doctors/${sampleDoctorId}`,
@@ -207,9 +221,13 @@ describe('DoctorsController (e2e)', () => {
         fullName: 'Dr. Gregory House',
         specialty: 'Neurology',
         qualification: 'MD, PhD',
+        yearsOfExperience: null,
+        avatarUrl: null,
         consultationFee: 200,
         bio: 'Specialist in neurological disorders.',
         isAcceptingBookings: true,
+        averageRating: null,
+        totalReviews: 0,
         createdAt: '2026-02-01T09:00:00.000Z',
       });
 

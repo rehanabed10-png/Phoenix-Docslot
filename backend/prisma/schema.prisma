@@ -38,6 +38,7 @@ model UserProfile {
 
   doctorProfile DoctorProfile?
   appointments  Appointment[] @relation("PatientAppointments")
+  reviews       AppointmentReview[] @relation("PatientReviews")
   auditLogs     AuditLog[]    @relation("AuditActor")
 
   @@index([role, isActive])
@@ -48,6 +49,8 @@ model DoctorProfile {
   userProfileId   String   @unique @db.Uuid
   specialty       String   @db.VarChar(100)
   qualification   String?  @db.VarChar(200)
+  yearsOfExperience Int?   @default(5)
+  avatarUrl       String?  @db.VarChar(500)
   consultationFee Decimal? @db.Decimal(10, 2)
   bio             String?  @db.Text
   isAcceptingBookings Boolean @default(true)
@@ -58,6 +61,7 @@ model DoctorProfile {
   weeklyAvailability WeeklyAvailability[]
   availabilityExceptions AvailabilityException[]
   appointments      Appointment[]
+  reviews           AppointmentReview[] @relation("DoctorReviews")
 
   @@index([specialty, isAcceptingBookings])
 }
@@ -107,10 +111,30 @@ model Appointment {
 
   patient UserProfile  @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Restrict)
   doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  review  AppointmentReview?
 
   @@index([patientId, startAt])
   @@index([doctorId, startAt, status])
   @@index([status, startAt])
+}
+
+model AppointmentReview {
+  id            String        @id @default(uuid()) @db.Uuid
+  appointmentId String        @unique @db.Uuid
+  patientId     String        @db.Uuid
+  doctorId      String        @db.Uuid
+  rating        Int
+  comment       String?       @db.VarChar(1000)
+  isDemo        Boolean       @default(false)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+
+  appointment   Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient       UserProfile   @relation("PatientReviews", fields: [patientId], references: [id], onDelete: Restrict)
+  doctor        DoctorProfile @relation("DoctorReviews", fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, createdAt])
+  @@index([patientId])
 }
 
 model AuditLog {

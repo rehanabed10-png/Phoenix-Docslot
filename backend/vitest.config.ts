@@ -9,5 +9,13 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
+    pool: 'forks',
+    forks: {
+      singleFork: true,
+    },
+    fileParallelism: false,
+    isolate: false,
+    hookTimeout: 30000,
+    testTimeout: 30000,
   },
 });

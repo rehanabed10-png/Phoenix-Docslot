@@ -39,7 +39,9 @@ describe('AppController (e2e)', () => {
 
   describe('Non-existent route', () => {
     it('returns 404 for unmapped endpoint', async () => {
-      const response = await request(app.getHttpServer()).get('/non-existent-route');
+      const response = await request(app.getHttpServer()).get(
+        '/non-existent-route',
+      );
 
       expect(response.status).toBe(404);
     });

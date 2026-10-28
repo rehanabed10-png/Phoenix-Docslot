@@ -17,6 +17,8 @@ describe('DoctorsService', () => {
     id: 'd9e5b2c1-3a4b-5c6d-7e8f-9a0b1c2d3e4f',
     specialty: 'Cardiology',
     qualification: 'MD, FACC',
+    yearsOfExperience: 14,
+    avatarUrl: 'https://example.com/avatar.jpg',
     consultationFee: 150.0,
     bio: 'Experienced cardiologist specialized in preventive care.',
     isAcceptingBookings: true,
@@ -24,6 +26,7 @@ describe('DoctorsService', () => {
     userProfile: {
       fullName: 'Dr. Sarah Connor',
     },
+    reviews: [{ rating: 5 }, { rating: 4 }],
   };
 
   beforeEach(() => {
@@ -73,9 +76,13 @@ describe('DoctorsService', () => {
         fullName: 'Dr. Sarah Connor',
         specialty: 'Cardiology',
         qualification: 'MD, FACC',
+        yearsOfExperience: 14,
+        avatarUrl: 'https://example.com/avatar.jpg',
         consultationFee: 150,
         bio: mockDoctor.bio,
         isAcceptingBookings: true,
+        averageRating: 4.5,
+        totalReviews: 2,
         createdAt: '2026-01-15T10:00:00.000Z',
       });
 
@@ -209,9 +216,13 @@ describe('DoctorsService', () => {
         fullName: 'Dr. Sarah Connor',
         specialty: 'Cardiology',
         qualification: 'MD, FACC',
+        yearsOfExperience: 14,
+        avatarUrl: 'https://example.com/avatar.jpg',
         consultationFee: 150,
         bio: mockDoctor.bio,
         isAcceptingBookings: true,
+        averageRating: 4.5,
+        totalReviews: 2,
         createdAt: '2026-01-15T10:00:00.000Z',
       });
       // Verify no sensitive fields are present

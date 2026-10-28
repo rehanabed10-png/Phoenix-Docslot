@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { createRemoteJWKSet, JWTVerifyGetKey, jwtVerify } from 'jose';
 import { UserRole } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -41,18 +37,22 @@ export class AuthService {
   /**
    * Cryptographically verifies an incoming Supabase access token using asymmetric keys.
    */
-  async verifyTokenPayload(token: string): Promise<{ sub: string; email?: string }> {
-    const supabaseUrl = getSupabaseUrl();
-    const expectedIssuer = `${supabaseUrl}/auth/v1`;
-
+  async verifyTokenPayload(
+    token: string,
+  ): Promise<{ sub: string; email?: string }> {
     try {
+      const supabaseUrl = getSupabaseUrl();
+      const expectedIssuer = `${supabaseUrl}/auth/v1`;
+
       const { payload } = await jwtVerify(token, this.getJWKS(), {
         issuer: expectedIssuer,
         algorithms: [...PERMITTED_JWT_ALGORITHMS],
       });
 
       if (!payload.sub || typeof payload.sub !== 'string') {
-        throw new UnauthorizedException('Token subject (sub) is missing or invalid.');
+        throw new UnauthorizedException(
+          'Token subject (sub) is missing or invalid.',
+        );
       }
 
       return {
@@ -63,8 +63,12 @@ export class AuthService {
       if (err instanceof UnauthorizedException) {
         throw err;
       }
-      this.logger.warn(`JWT verification failed: ${err instanceof Error ? err.message : String(err)}`);
-      throw new UnauthorizedException('Invalid or expired authentication token.');
+      this.logger.warn(
+        `JWT verification failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new UnauthorizedException(
+        'Invalid or expired authentication token.',
+      );
     }
   }
 
@@ -74,20 +78,29 @@ export class AuthService {
    * or misconfigured doctor profiles.
    */
   async resolveUser(sub: string): Promise<AuthenticatedUser> {
-    const user = await this.prisma.userProfile.findUnique({
-      where: { id: sub },
-      include: {
-        doctorProfile: {
-          select: {
-            id: true,
-            isAcceptingBookings: true,
+    let user;
+    try {
+      user = await this.prisma.userProfile.findUnique({
+        where: { id: sub },
+        include: {
+          doctorProfile: {
+            select: {
+              id: true,
+              isAcceptingBookings: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch {
+      throw new UnauthorizedException(
+        'User profile not found in application database.',
+      );
+    }
 
     if (!user) {
-      throw new UnauthorizedException('User profile not found in application database.');
+      throw new UnauthorizedException(
+        'User profile not found in application database.',
+      );
     }
 
     if (!user.isActive) {
@@ -115,9 +128,59 @@ export class AuthService {
 
   /**
    * High-level verification: validates token signature/claims and returns the verified user.
+   * Throws 401 Unauthorized if the user profile does not exist in the database.
    */
   async authenticate(token: string): Promise<AuthenticatedUser> {
     const payload = await this.verifyTokenPayload(token);
     return this.resolveUser(payload.sub);
+  }
+
+  /**
+   * Safely provisions or updates a patient profile after verified Supabase authentication.
+   * Public registration requests can NEVER assign DOCTOR or ADMIN roles;
+   * the role is strictly set to UserRole.PATIENT.
+   */
+  async registerPatient(
+    sub: string,
+    email: string,
+    fullName: string,
+    phone?: string,
+  ): Promise<AuthenticatedUser> {
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanName = fullName.trim();
+
+    const profile = await this.prisma.userProfile.upsert({
+      where: { id: sub },
+      update: {
+        fullName: cleanName || undefined,
+        ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
+      },
+      create: {
+        id: sub,
+        email: cleanEmail,
+        fullName: cleanName,
+        phone: phone?.trim() || null,
+        role: UserRole.PATIENT,
+        isActive: true,
+      },
+      include: {
+        doctorProfile: {
+          select: {
+            id: true,
+            isAcceptingBookings: true,
+          },
+        },
+      },
+    });
+
+    return {
+      id: profile.id,
+      email: profile.email,
+      fullName: profile.fullName,
+      phone: profile.phone,
+      role: profile.role,
+      isActive: profile.isActive,
+      doctorId: profile.doctorProfile?.id,
+    };
   }
 }

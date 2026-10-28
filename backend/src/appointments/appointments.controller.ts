@@ -23,6 +23,7 @@ import { AppointmentResponseDto } from './dto/appointment-response.dto.js';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto.js';
+import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto.js';
 
 @Controller('appointments')
 @UseGuards(SupabaseAuthGuard)
@@ -56,6 +57,20 @@ export class AppointmentsController {
   }
 
   /**
+   * Protected: Retrieves today's schedule for the authenticated doctor in Asia/Kolkata timezone.
+   * Authorized Actors: DOCTOR (assigned), ADMIN.
+   */
+  @Get('today')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  async getTodayDoctorSchedule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: AppointmentQueryDto,
+  ): Promise<AppointmentResponseDto[]> {
+    return this.appointmentsService.getTodayDoctorSchedule(user, query);
+  }
+
+  /**
    * Protected: Retrieves single appointment details with role/ownership enforcement.
    */
   @Get(':id')
@@ -64,6 +79,21 @@ export class AppointmentsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<AppointmentResponseDto> {
     return this.appointmentsService.getAppointmentById(user, id);
+  }
+
+  /**
+   * Protected: Updates appointment attendance status (COMPLETED or NO_SHOW).
+   * Authorized Actors: assigned doctor, or administrator.
+   */
+  @Patch(':id/status')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  async updateAppointmentStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateAppointmentStatusDto,
+  ): Promise<AppointmentResponseDto> {
+    return this.appointmentsService.updateAppointmentStatus(user, id, dto);
   }
 
   /**

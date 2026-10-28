@@ -17,12 +17,16 @@
  * cannot be self-assigned via client-provided claims or public endpoints; it requires
  * trusted back-office provisioning (e.g. database seed, admin migration, or authorized internal workflow).
  */
+import { UnauthorizedException } from '@nestjs/common';
+
 export const PERMITTED_JWT_ALGORITHMS = ['RS256', 'ES256'] as const;
 
 export function getSupabaseUrl(): string {
-  const url = process.env.SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   if (!url) {
-    throw new Error('SUPABASE_URL environment variable is not configured');
+    throw new UnauthorizedException(
+      'Authentication service is not configured (missing SUPABASE_URL).',
+    );
   }
   return url.replace(/\/+$/, '');
 }

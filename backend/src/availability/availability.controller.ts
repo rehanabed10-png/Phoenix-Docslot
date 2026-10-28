@@ -1,10 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
+  Post,
   Put,
   Query,
   UseGuards,
@@ -18,6 +22,7 @@ import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.in
 import { AvailabilityService } from './availability.service.js';
 import {
   AvailabilityExceptionResponseDto,
+  CreateAvailabilityExceptionDto,
   ExceptionQueryDto,
 } from './dto/availability-exception.dto.js';
 import {
@@ -55,6 +60,51 @@ export class AvailabilityController {
   }
 
   /**
+   * Protected: Creates a date-specific availability exception (leave or custom hours) for a doctor.
+   * Authorized Actors: ADMIN, or DOCTOR matching doctorId.
+   */
+  @Post('exceptions')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  async createException(
+    @Param('doctorId', new ParseUUIDPipe({ version: '4' })) doctorId: string,
+    @Body() dto: CreateAvailabilityExceptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AvailabilityExceptionResponseDto> {
+    if (user.role !== UserRole.ADMIN && user.doctorId !== doctorId) {
+      throw new ForbiddenException(
+        'You are not authorized to create availability exceptions for another doctor.',
+      );
+    }
+
+    return this.availabilityService.createException(doctorId, dto);
+  }
+
+  /**
+   * Protected: Deletes a date-specific availability exception.
+   * Authorized Actors: ADMIN, or DOCTOR matching doctorId.
+   */
+  @Delete('exceptions/:exceptionId')
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteException(
+    @Param('doctorId', new ParseUUIDPipe({ version: '4' })) doctorId: string,
+    @Param('exceptionId', new ParseUUIDPipe({ version: '4' }))
+    exceptionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    if (user.role !== UserRole.ADMIN && user.doctorId !== doctorId) {
+      throw new ForbiddenException(
+        'You are not authorized to delete availability exceptions for another doctor.',
+      );
+    }
+
+    return this.availabilityService.deleteException(doctorId, exceptionId);
+  }
+
+  /**
    * Public: Retrieves available, bookable slots for a doctor on a specific date.
    */
   @Get('slots')
@@ -85,7 +135,4 @@ export class AvailabilityController {
 
     return this.availabilityService.setWeeklyAvailability(doctorId, dto);
   }
-
-  // NOTE: POST /exceptions and DELETE /exceptions/:id remain deferred from HTTP exposure
-  // until a separate reviewed database migration establishes unique constraint on (doctorId, date).
 }
