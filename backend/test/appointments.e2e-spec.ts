@@ -327,6 +327,28 @@ describe('Appointments & Slot Availability (e2e)', () => {
         "not available or does not match the doctor's schedule",
       );
     });
+    it('returns 400 Bad Request when doctor is not accepting bookings (e.g. deactivated)', async () => {
+      mockPrismaService.userProfile.findUnique.mockResolvedValueOnce({
+        id: patientUserId,
+        email: 'patient@example.com',
+        fullName: 'Jane Patient',
+        role: UserRole.PATIENT,
+        isActive: true,
+      });
+      mockPrismaService.doctorProfile.findUnique.mockResolvedValueOnce({
+        id: targetDoctorId,
+        isAcceptingBookings: false,
+      });
+
+      const token = await createToken(patientUserId);
+      const res = await request(app.getHttpServer())
+        .post('/appointments')
+        .set('Authorization', `Bearer ${token}`)
+        .send(validBookingPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('not accepting new bookings');
+    });
 
     it('returns 409 Conflict with doctor message when doctor slot is double-booked', async () => {
       mockDoctorAvailability();

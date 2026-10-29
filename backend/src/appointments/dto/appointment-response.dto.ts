@@ -33,4 +33,7 @@ export class AppointmentResponseDto {
   doctor?: AppointmentDoctorDto;
   patient?: AppointmentPatientDto;
   review?: AppointmentReviewSummaryDto | null;
+  queueNumber?: string;
+  queuePosition?: number | null;
 }
+

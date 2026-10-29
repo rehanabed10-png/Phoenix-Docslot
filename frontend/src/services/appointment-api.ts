@@ -3,6 +3,7 @@ import type {
   AppointmentResponse,
   CancelAppointmentRequest,
   CreateAppointmentRequest,
+  QueueAppointmentItem,
   RescheduleAppointmentRequest,
   SlotAvailabilityResponse,
   UpdateAppointmentStatusRequest,
@@ -695,4 +696,41 @@ export async function setDoctorWeeklyAvailability(
   notifyDataChange();
   return data;
 }
+
+/**
+ * Fetches today's active waiting queue in priority order from the backend.
+ * Publicly accessible: works for all clinic visitors, patients, and doctors.
+ */
+export async function getTodayLiveQueue(
+  doctorId?: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<QueueAppointmentItem[]> {
+  const baseUrl = getApiBaseUrl();
+  const query = doctorId ? `?doctorId=${encodeURIComponent(doctorId)}` : '';
+  const url = `${baseUrl}/queue/today${query}`;
+
+  let response: Response;
+  try {
+    response = await fetchFn(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+  } catch (err) {
+    const networkMsg = err instanceof Error ? err.message : 'Unknown network failure';
+    throw new AppointmentApiError(
+      `Unable to connect to queue service at ${baseUrl}: ${networkMsg}`,
+      0,
+      err,
+    );
+  }
+
+  if (!response.ok) {
+    throw await parseAppointmentError(response);
+  }
+
+  return (await response.json()) as QueueAppointmentItem[];
+}
+
 

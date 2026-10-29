@@ -2,6 +2,7 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AdminModule } from './admin/admin.module.js';
 import { AppointmentsModule } from './appointments/appointments.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AvailabilityModule } from './availability/availability.module.js';
@@ -18,6 +19,7 @@ import { ReviewsModule } from './reviews/reviews.module.js';
     AvailabilityModule,
     AppointmentsModule,
     ReviewsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

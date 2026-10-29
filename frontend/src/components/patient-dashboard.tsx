@@ -542,6 +542,16 @@ export function PatientDashboard({
                       </div>
                     </div>
 
+                    {app.queueNumber && (
+                      <div className="card-queue-strip">
+                        <span className="queue-token-label">Queue Token:</span>
+                        <span className="queue-token-value">{app.queueNumber}</span>
+                        {app.queuePosition ? (
+                          <span className="queue-pos-badge">#{app.queuePosition} in line</span>
+                        ) : null}
+                      </div>
+                    )}
+
                     {app.reason && (
                       <div className="appointment-reason-box">
                         <strong>Reason for visit:</strong>

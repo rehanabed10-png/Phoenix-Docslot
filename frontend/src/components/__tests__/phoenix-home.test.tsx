@@ -6,6 +6,8 @@ import * as authSession from '../../services/auth-session';
 vi.mock('../../services/appointment-api', () => ({
   getCurrentUserProfile: vi.fn(),
   fetchMyAppointments: vi.fn().mockResolvedValue([]),
+  getMyAppointments: vi.fn().mockResolvedValue([]),
+  getTodayLiveQueue: vi.fn().mockResolvedValue([]),
   cancelAppointment: vi.fn(),
   rescheduleAppointment: vi.fn(),
   AppointmentApiError: class extends Error {},

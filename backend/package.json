@@ -21,8 +21,10 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "prisma:seed": "node --import jiti/register prisma/seed.ts",
+    "seed:admin": "node --import jiti/register prisma/seed-admin.ts",
     "verify:seed-runtime": "node --import jiti/register -e \"import('./prisma/seed.ts').then(() => console.log('Seed runner runtime verified!'))\"",
-    "confirm:demo-users": "node --import jiti/register prisma/confirm-demo-users.ts"
+    "confirm:demo-users": "node --import jiti/register prisma/confirm-demo-users.ts",
+    "db:demo-setup": "node --import jiti/register prisma/seed-clean-demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.1",

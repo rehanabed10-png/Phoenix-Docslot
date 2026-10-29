@@ -256,6 +256,44 @@ export async function signUpWithEmailPassword(
         'An account with this email address already exists. Please sign in instead.',
       );
     }
+
+    // If Supabase free tier email rate limit or SMTP error occurs:
+    if (
+      error.message.toLowerCase().includes('rate limit') ||
+      error.message.toLowerCase().includes('smtp') ||
+      (error as { status?: number }).status === 429
+    ) {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+      const fallbackRes = await fetch(`${baseUrl}/auth/patient-signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: cleanName, email: cleanEmail, password }),
+      });
+
+      if (!fallbackRes.ok) {
+        const errorData = await fallbackRes.json().catch(() => null);
+        throw new Error(
+          errorData?.message || 'Registration failed. Please check your details and try again.',
+        );
+      }
+
+      // Patient is now provisioned with confirmed email; sign in to get real Supabase JWT session
+      const signInRes = await client.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (signInRes.data.session?.access_token) {
+        const accessToken = signInRes.data.session.access_token;
+        setAuthToken(accessToken);
+        return {
+          accessToken,
+          email: cleanEmail,
+          requiresEmailConfirmation: false,
+        };
+      }
+    }
+
     if (error.message.toLowerCase().includes('password')) {
       throw new Error(error.message);
     }

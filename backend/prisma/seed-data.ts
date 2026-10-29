@@ -180,6 +180,14 @@ export const DEMO_PATIENT: DemoPatientSeedData = {
   phone: '+91-9876543210',
 };
 
+export const DEMO_ADMIN: DemoPatientSeedData = {
+  defaultUserId: '50000000-0000-4000-8000-000000000005',
+  envVarUserIdKey: 'DEMO_ADMIN_USER_ID',
+  fullName: 'Clinic Administrator',
+  email: 'admin@phoenixdocslot.demo',
+  phone: '+91-9811100000',
+};
+
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

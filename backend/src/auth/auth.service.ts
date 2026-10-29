@@ -183,4 +183,143 @@ export class AuthService {
       doctorId: profile.doctorProfile?.id,
     };
   }
+
+  /**
+   * Directly provisions a patient in Supabase Auth and UserProfile.
+   * Eliminates demo failures when Supabase hosted SMTP / rate limit blocks client-side signup.
+   * Strictly enforces UserRole.PATIENT.
+   */
+  async provisionPatientDirectly(
+    fullName: string,
+    email: string,
+    password: string,
+    phone?: string,
+  ): Promise<{ success: boolean; email: string; userId: string }> {
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanName = fullName.trim();
+
+    // Check if user already exists
+    const existingProfile = await this.prisma.userProfile.findUnique({
+      where: { email: cleanEmail },
+    });
+    if (existingProfile) {
+      throw new UnauthorizedException(
+        'An account with this email address already exists. Please sign in instead.',
+      );
+    }
+
+    const existingAuth = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM auth.users WHERE lower(email) = ${cleanEmail} LIMIT 1
+    `;
+
+    let userId: string;
+    if (existingAuth.length > 0) {
+      userId = existingAuth[0].id;
+      // Update password and confirm
+      await this.prisma.$queryRaw`
+        UPDATE auth.users SET
+          encrypted_password = extensions.crypt(${password}, extensions.gen_salt('bf')),
+          email_confirmed_at = NOW(),
+          raw_user_meta_data = jsonb_build_object('full_name', ${cleanName}::text, 'email_verified', true),
+          updated_at = NOW()
+        WHERE id = ${userId}::uuid
+      `;
+    } else {
+      const inserted = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO auth.users (
+          instance_id,
+          id,
+          aud,
+          role,
+          email,
+          encrypted_password,
+          email_confirmed_at,
+          raw_app_meta_data,
+          raw_user_meta_data,
+          created_at,
+          updated_at,
+          confirmation_token,
+          recovery_token,
+          email_change_token_new,
+          email_change,
+          phone_change,
+          phone_change_token,
+          reauthentication_token,
+          is_sso_user,
+          is_anonymous
+        ) VALUES (
+          '00000000-0000-0000-0000-000000000000'::uuid,
+          gen_random_uuid(),
+          'authenticated',
+          'authenticated',
+          ${cleanEmail},
+          extensions.crypt(${password}, extensions.gen_salt('bf')),
+          NOW(),
+          '{"provider": "email", "providers": ["email"]}'::jsonb,
+          jsonb_build_object('full_name', ${cleanName}::text, 'email_verified', true),
+          NOW(),
+          NOW(),
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          false,
+          false
+        )
+        RETURNING id
+      `;
+      userId = inserted[0].id;
+    }
+
+    // Upsert into auth.identities
+    await this.prisma.$queryRaw`
+      INSERT INTO auth.identities (
+        id,
+        provider_id,
+        user_id,
+        identity_data,
+        provider,
+        last_sign_in_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        gen_random_uuid(),
+        ${userId}::text,
+        ${userId}::uuid,
+        jsonb_build_object('sub', ${userId}::text, 'email', ${cleanEmail}::text, 'email_verified', true),
+        'email',
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (provider_id, provider) DO UPDATE SET
+        identity_data = jsonb_build_object('sub', ${userId}::text, 'email', ${cleanEmail}::text, 'email_verified', true),
+        updated_at = NOW()
+    `;
+
+    // Upsert UserProfile as strictly PATIENT
+    await this.prisma.userProfile.upsert({
+      where: { id: userId },
+      update: {
+        fullName: cleanName,
+        email: cleanEmail,
+        phone: phone?.trim() || null,
+        role: UserRole.PATIENT,
+        isActive: true,
+      },
+      create: {
+        id: userId,
+        fullName: cleanName,
+        email: cleanEmail,
+        phone: phone?.trim() || null,
+        role: UserRole.PATIENT,
+        isActive: true,
+      },
+    });
+
+    return { success: true, email: cleanEmail, userId };
+  }
 }

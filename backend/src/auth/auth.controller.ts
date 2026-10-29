@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
+import { DirectPatientSignupDto } from './dto/direct-patient-signup.dto.js';
 import { RegisterPatientDto } from './dto/register-patient.dto.js';
 import { SupabaseAuthGuard } from './guards/supabase-auth.guard.js';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface.js';
@@ -19,6 +20,22 @@ import type { AuthenticatedUser } from './interfaces/authenticated-user.interfac
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  /**
+   * Public patient self-registration fallback.
+   * Useful when Supabase email rate limits or SMTP delivery failures prevent client-side email confirmation.
+   * Strictly grants UserRole.PATIENT only.
+   */
+  @Post('patient-signup')
+  @HttpCode(HttpStatus.CREATED)
+  async directPatientSignup(@Body() dto: DirectPatientSignupDto) {
+    return this.authService.provisionPatientDirectly(
+      dto.fullName,
+      dto.email,
+      dto.password,
+      dto.phone,
+    );
+  }
 
   @Get('me')
   @UseGuards(SupabaseAuthGuard)

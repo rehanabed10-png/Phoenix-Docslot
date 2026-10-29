@@ -1,34 +1,33 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import {
-  CalendarCheck2,
   HeartPulse,
+  LogOut,
   Menu,
+  Shield,
   Stethoscope,
   User,
   UserRound,
+  Users,
   X,
 } from 'lucide-react'
 import { getCurrentUserProfile } from '../services/appointment-api'
 import {
+  clearStoredUserProfile,
   getAuthToken,
   initAuthListener,
   restoreSupabaseSession,
+  signOutUser,
   subscribeAuthChange,
 } from '../services/auth-session'
 import type { UserProfileResponse } from '../types/appointment'
+import { AdminDashboard } from './admin-dashboard'
 import { AuthModal } from './auth-modal'
 import { DoctorDashboard } from './doctor-dashboard'
 import { DoctorDirectory } from './doctor-directory'
+import { LiveQueueBoard } from './live-queue-board'
 import { PatientDashboard } from './patient-dashboard'
 
 const CURRENT_YEAR = new Date().getFullYear()
-
-const navItems = [
-  { label: 'Home', href: '#home' },
-  { label: 'Find Doctors', href: '#find-doctors' },
-  { label: 'My Appointments', href: '#my-appointments' },
-  { label: 'Doctor Schedule', href: '#doctor-schedule' },
-]
 
 function Brand() {
   return (
@@ -65,8 +64,20 @@ function GlassButton({
 export function PhoenixHome() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authRole, setAuthRole] = useState<'PATIENT' | 'DOCTOR' | 'ADMIN'>('PATIENT')
   const [currentUser, setCurrentUser] = useState<UserProfileResponse | null>(null)
   const [showProcess, setShowProcess] = useState(false)
+
+  const openAuth = (role: 'PATIENT' | 'DOCTOR' | 'ADMIN' = 'PATIENT') => {
+    setAuthRole(role)
+    setAuthModalOpen(true)
+  }
+
+  const handleSignOut = async () => {
+    await signOutUser()
+    clearStoredUserProfile()
+    setCurrentUser(null)
+  }
 
   // Synchronize authenticated user profile and restore Supabase session
   useEffect(() => {
@@ -93,13 +104,41 @@ export function PhoenixHome() {
     }
   }, [])
 
+  // Navigation items dynamically tailored to active role
+  const currentNavItems = currentUser
+    ? currentUser.role === 'DOCTOR'
+      ? [
+          { label: 'Home', href: '#home' },
+          { label: 'View Queue', href: '#live-queue' },
+          { label: 'Doctor Schedule', href: '#doctor-schedule' },
+        ]
+      : currentUser.role === 'ADMIN'
+        ? [
+            { label: 'Home', href: '#home' },
+            { label: 'View Queue', href: '#live-queue' },
+            { label: 'Admin Command', href: '#admin-dashboard' },
+          ]
+        : [
+            { label: 'Home', href: '#home' },
+            { label: 'Find Doctors', href: '#find-doctors' },
+            { label: 'View Queue', href: '#live-queue' },
+            { label: 'My Appointments', href: '#my-appointments' },
+          ]
+    : [
+        { label: 'Home', href: '#home' },
+        { label: 'Find Doctors', href: '#find-doctors' },
+        { label: 'View Queue', href: '#live-queue' },
+        { label: 'My Appointments', href: '#my-appointments' },
+        { label: 'Doctor Schedule', href: '#doctor-schedule' },
+      ]
+
   return (
     <div className="site-shell">
       {/* Navigation Header matching reference portal style */}
       <nav className="navbar" aria-label="Main navigation">
         <Brand />
         <div className={`nav-links ${menuOpen ? 'nav-links-open' : ''}`}>
-          {navItems.map((item, index) => (
+          {currentNavItems.map((item, index) => (
             <a
               key={item.href}
               className={index === 0 ? 'active' : ''}
@@ -114,31 +153,46 @@ export function PhoenixHome() {
             className="mobile-login"
             onClick={() => {
               setMenuOpen(false)
-              setAuthModalOpen(true)
+              if (currentUser) {
+                handleSignOut()
+              } else {
+                openAuth('PATIENT')
+              }
             }}
           >
-            {currentUser ? `Account (${currentUser.role})` : 'Log in'}
+            {currentUser ? 'Sign Out' : 'Log in'}
           </button>
         </div>
         <div className="nav-actions">
           {currentUser ? (
-            <button
-              type="button"
-              className="auth-user-badge"
-              onClick={() => setAuthModalOpen(true)}
-              title="Manage session"
-            >
-              <User size={14} />
-              <span>{currentUser.fullName}</span>
-              <span className={`role-pill role-${currentUser.role.toLowerCase()}`}>
-                {currentUser.role}
-              </span>
-            </button>
+            <>
+              <button
+                type="button"
+                className="auth-user-badge"
+                onClick={() => openAuth(currentUser.role)}
+                title="Manage active session"
+              >
+                <User size={14} />
+                <span>{currentUser.fullName}</span>
+                <span className={`role-pill role-${currentUser.role.toLowerCase()}`}>
+                  {currentUser.role}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="glass-button glass-button-secondary nav-signout-btn"
+                onClick={handleSignOut}
+                title="Sign out of account"
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </button>
+            </>
           ) : (
             <button
               type="button"
               className="login-link nav-signin-btn"
-              onClick={() => setAuthModalOpen(true)}
+              onClick={() => openAuth('PATIENT')}
               aria-label="Sign In"
             >
               Sign In
@@ -158,50 +212,67 @@ export function PhoenixHome() {
 
       {/* Hero Landing Section matching Kisan Mitra .landing and .login-box */}
       <main className="landing" id="home">
-        <h1>PHOENIX DOCSLOT</h1>
-        <p className="tagline">Smart Clinic Appointment &amp; Healthcare Booking System</p>
+        <h1>Phoenix DocSlot</h1>
+        <p className="tagline">Simple Clinic Appointment &amp; Queue Management</p>
 
-        <section className="login-box" aria-label="User portal entry options">
+        <section className="login-box" aria-label="Clinic entry options">
           <a
             href="#my-appointments"
             className="login-card"
             onClick={(e) => {
-              if (!currentUser) {
+              if (!currentUser || currentUser.role !== 'PATIENT') {
                 e.preventDefault()
-                setAuthModalOpen(true)
+                openAuth('PATIENT')
               }
             }}
           >
             <div className="icon">
               <UserRound size={32} />
             </div>
-            <h2>Patient</h2>
-            <p>Book consultations, manage upcoming visits, and view medical appointments</p>
+            <h2>Patient Login</h2>
+            <p>Book consultations and manage upcoming appointments</p>
           </a>
 
           <a
             href="#doctor-schedule"
             className="login-card"
             onClick={(e) => {
-              if (!currentUser) {
+              if (!currentUser || currentUser.role !== 'DOCTOR') {
                 e.preventDefault()
-                setAuthModalOpen(true)
+                openAuth('DOCTOR')
               }
             }}
           >
             <div className="icon">
               <Stethoscope size={32} />
             </div>
-            <h2>Doctor</h2>
-            <p>Manage daily consultation roster, update patient status, and set weekly hours</p>
+            <h2>Doctor Login</h2>
+            <p>View daily schedule and mark patient attendance</p>
           </a>
 
-          <a href="#find-doctors" className="login-card">
+          <a
+            href="#admin-dashboard"
+            className="login-card admin-portal-card"
+            onClick={(e) => {
+              if (!currentUser || currentUser.role !== 'ADMIN') {
+                e.preventDefault()
+                openAuth('ADMIN')
+              }
+            }}
+          >
             <div className="icon">
-              <CalendarCheck2 size={32} />
+              <Shield size={32} />
             </div>
-            <h2>Find Doctors</h2>
-            <p>Explore certified specialists across cardiology, neurology, and dermatology</p>
+            <h2>Admin Login</h2>
+            <p>Manage clinic doctors, appointments, and directory</p>
+          </a>
+
+          <a href="#live-queue" className="login-card">
+            <div className="icon">
+              <Users size={32} />
+            </div>
+            <h2>View Queue</h2>
+            <p>Check today&apos;s live waiting room queue and token status</p>
           </a>
         </section>
 
@@ -210,7 +281,7 @@ export function PhoenixHome() {
             <button
               type="button"
               className="glass-button glass-button-secondary hero-signin-btn"
-              onClick={() => setAuthModalOpen(true)}
+              onClick={() => openAuth('PATIENT')}
               aria-label="Sign In to Phoenix"
             >
               Sign In to Phoenix
@@ -280,32 +351,87 @@ export function PhoenixHome() {
         </section>
       </main>
 
-      {/* Doctor Directory Section */}
-      <DoctorDirectory />
+      {/* 
+        ROLE DASHBOARD RENDERING:
+        - Unauthenticated visitor: Renders DoctorDirectory + PatientDashboard + DoctorDashboard + AdminDashboard prompts.
+        - PATIENT role: Renders PatientDashboard (their appointments/rescheduling/reviews) and DoctorDirectory (for booking).
+        - DOCTOR role: Renders DoctorDashboard exclusively (today's consultations, attendance, and weekly availability).
+        - ADMIN role: Renders AdminDashboard exclusively (doctor management, system appointments, and patient directory).
+      */}
 
-      {/* Patient Dashboard Section */}
-      <PatientDashboard
-        onOpenAuth={() => setAuthModalOpen(true)}
-        onExploreDoctors={() => {
-          const el = document.getElementById('find-doctors')
-          el?.scrollIntoView({ behavior: 'smooth' })
-        }}
-      />
+      {/* Unauthenticated Visitor View */}
+      {!currentUser && (
+        <>
+          <DoctorDirectory />
+          <LiveQueueBoard />
+          <PatientDashboard
+            onOpenAuth={() => openAuth('PATIENT')}
+            onExploreDoctors={() => {
+              const el = document.getElementById('find-doctors')
+              el?.scrollIntoView({ behavior: 'smooth' })
+            }}
+          />
+          <DoctorDashboard onOpenAuth={() => openAuth('DOCTOR')} />
+          <AdminDashboard
+            currentUser={null}
+            onOpenAuth={() => openAuth('ADMIN')}
+          />
+        </>
+      )}
 
-      {/* Doctor Dashboard Section */}
-      <DoctorDashboard onOpenAuth={() => setAuthModalOpen(true)} />
+      {/* Authenticated Patient View */}
+      {currentUser && currentUser.role === 'PATIENT' && (
+        <>
+          <PatientDashboard
+            onOpenAuth={() => openAuth('PATIENT')}
+            onExploreDoctors={() => {
+              const el = document.getElementById('find-doctors')
+              el?.scrollIntoView({ behavior: 'smooth' })
+            }}
+          />
+          <DoctorDirectory />
+          <LiveQueueBoard />
+        </>
+      )}
+
+      {/* Authenticated Doctor View */}
+      {currentUser && currentUser.role === 'DOCTOR' && (
+        <>
+          <DoctorDashboard onOpenAuth={() => openAuth('DOCTOR')} />
+          <LiveQueueBoard />
+        </>
+      )}
+
+      {/* Authenticated Admin View */}
+      {currentUser && currentUser.role === 'ADMIN' && (
+        <>
+          <AdminDashboard
+            currentUser={currentUser}
+            onOpenAuth={() => openAuth('ADMIN')}
+          />
+          <LiveQueueBoard />
+        </>
+      )}
 
       {/* Footer matching reference style */}
       <footer className="footer section-wrap">
         <Brand />
         <div className="footer-links">
           <a href="#find-doctors">Find Doctors</a>
+          <a href="#live-queue">View Queue</a>
           <a href="#my-appointments">My Appointments</a>
           <a href="#doctor-schedule">Doctor Schedule</a>
+          <a href="#admin-dashboard">Admin Portal</a>
           <button
             type="button"
             className="footer-auth-link"
-            onClick={() => setAuthModalOpen(true)}
+            onClick={() => {
+              if (currentUser) {
+                handleSignOut()
+              } else {
+                openAuth('PATIENT')
+              }
+            }}
           >
             {currentUser ? `Signed in as ${currentUser.fullName}` : 'Log in'}
           </button>
@@ -318,8 +444,12 @@ export function PhoenixHome() {
       {/* Auth & Session Management Modal */}
       <AuthModal
         isOpen={authModalOpen}
+        initialRole={authRole}
         onClose={() => setAuthModalOpen(false)}
-        onAuthSuccess={(p) => setCurrentUser(p)}
+        onAuthSuccess={(p) => {
+          setCurrentUser(p)
+          setAuthModalOpen(false)
+        }}
       />
     </div>
   )

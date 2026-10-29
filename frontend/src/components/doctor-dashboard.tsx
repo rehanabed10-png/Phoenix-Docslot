@@ -737,9 +737,20 @@ export function DoctorDashboard({ onOpenAuth }: DoctorDashboardProps) {
                       >
                         {/* Time & Date Column */}
                         <div className="schedule-time-col">
-                          <span className="timeline-index">#{index + 1}</span>
+                          {app.queueNumber ? (
+                            <span className="queue-pill-doctor" title="Queue Token">
+                              {app.queueNumber}
+                            </span>
+                          ) : (
+                            <span className="timeline-index">#{index + 1}</span>
+                          )}
                           <strong className="timeline-time">{timeRange}</strong>
                           <span className="timeline-date-label">{dateFormatted}</span>
+                          {app.queuePosition && (
+                            <span className="queue-pos-tag" title="Live waiting position">
+                              Position #{app.queuePosition}
+                            </span>
+                          )}
                         </div>
 
                         {/* Patient & Details Column */}

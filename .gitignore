@@ -40,3 +40,10 @@ Thumbs.db
 # TypeScript build cache
 backend/*.tsbuildinfo
 backend/dist/
+# Private database backups
+backend/backups/
+
+# Temporary database diagnostics and verification scripts
+backend/prisma/backup-database.ts
+backend/prisma/verify-all-logins.ts
+backend/prisma/verify-e2e-flow.ts

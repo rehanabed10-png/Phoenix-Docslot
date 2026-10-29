@@ -18,7 +18,20 @@ describe('AppController', () => {
     const appService = new AppService(
       mockPrismaService as unknown as PrismaService,
     );
-    appController = new AppController(appService);
+    const mockAppointmentsService = {
+      getTodayLiveQueue: vi.fn().mockResolvedValue([
+        {
+          queuePosition: 1,
+          queueNumber: 'Q-01',
+          patientName: 'Jane Doe',
+          doctorName: 'Dr. John',
+        },
+      ]),
+    };
+    appController = new AppController(
+      appService,
+      mockAppointmentsService as unknown as AppointmentsService,
+    );
   });
 
   describe('GET /health', () => {
@@ -43,6 +56,14 @@ describe('AppController', () => {
       await expect(appController.getHealth()).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+  });
+
+  describe('GET /queue/today', () => {
+    it('should return today live queue from appointments service', async () => {
+      const result = await appController.getTodayQueue('doc-1');
+      expect(result).toHaveLength(1);
+      expect(result[0].queueNumber).toBe('Q-01');
     });
   });
 });

@@ -34,14 +34,25 @@ export interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAuthSuccess?: (profile: UserProfileResponse) => void;
+  initialRole?: 'PATIENT' | 'DOCTOR' | 'ADMIN';
 }
 
-export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
+export function AuthModal({
+  isOpen,
+  onClose,
+  onAuthSuccess,
+  initialRole = 'PATIENT',
+}: AuthModalProps) {
   const [profile, setProfile] = useState<UserProfileResponse | null>(getStoredUserProfile());
   const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  // Tab switch: 'signin' vs 'signup'
+  // Active role selected in the modal
+  const [selectedRole, setSelectedRole] = useState<'PATIENT' | 'DOCTOR' | 'ADMIN'>(
+    initialRole || 'PATIENT',
+  );
+
+  // Tab switch: 'signin' vs 'signup' (only PATIENT role allows signup)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
   // Form input states
@@ -57,6 +68,19 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const titleId = useId();
   const activeToken = getAuthToken();
   const configured = isSupabaseConfigured();
+
+  // Keep selectedRole synced when initialRole prop changes or modal opens
+  useEffect(() => {
+    if (isOpen) {
+      queueMicrotask(() => {
+        setSelectedRole(initialRole || 'PATIENT');
+        if (initialRole && initialRole !== 'PATIENT') {
+          setAuthMode('signin');
+        }
+        setAuthError(null);
+      });
+    }
+  }, [isOpen, initialRole]);
 
   // Verify and refresh profile from backend GET /auth/me whenever modal opens with an active token
   useEffect(() => {
@@ -381,33 +405,101 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             </div>
           )}
 
-          {/* Tab Segment: Sign In vs Create Account */}
-          <div className="auth-tabs" role="tablist">
+          {/* Role Selection Tabs matching Kisan Mitra portals */}
+          <div className="auth-role-selector" role="tablist" aria-label="Portal Role Selection">
             <button
               type="button"
               role="tab"
-              aria-selected={authMode === 'signin'}
-              className={`auth-tab-btn ${authMode === 'signin' ? 'active' : ''}`}
+              aria-selected={selectedRole === 'PATIENT'}
+              className={`auth-role-tab ${selectedRole === 'PATIENT' ? 'active' : ''}`}
               onClick={() => {
+                setSelectedRole('PATIENT');
+                setAuthError(null);
+              }}
+            >
+              <User size={15} />
+              <span>Patient</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedRole === 'DOCTOR'}
+              className={`auth-role-tab ${selectedRole === 'DOCTOR' ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedRole('DOCTOR');
                 setAuthMode('signin');
                 setAuthError(null);
               }}
             >
-              Sign In
+              <Stethoscope size={15} />
+              <span>Doctor</span>
             </button>
             <button
               type="button"
               role="tab"
-              aria-selected={authMode === 'signup'}
-              className={`auth-tab-btn ${authMode === 'signup' ? 'active' : ''}`}
+              aria-selected={selectedRole === 'ADMIN'}
+              className={`auth-role-tab ${selectedRole === 'ADMIN' ? 'active' : ''}`}
               onClick={() => {
-                setAuthMode('signup');
+                setSelectedRole('ADMIN');
+                setAuthMode('signin');
                 setAuthError(null);
               }}
             >
-              Create Account
+              <ShieldCheck size={15} />
+              <span>Admin</span>
             </button>
           </div>
+
+          {/* Role-Specific Notices */}
+          {selectedRole === 'DOCTOR' && (
+            <div className="role-auth-notice doctor-notice">
+              <Stethoscope size={18} className="notice-icon" />
+              <div>
+                <strong>Authorized Doctor Portal</strong>
+                <p>Doctor accounts are provisioned exclusively by clinic administration. Please log in with your assigned clinical credentials.</p>
+              </div>
+            </div>
+          )}
+
+          {selectedRole === 'ADMIN' && (
+            <div className="role-auth-notice admin-notice">
+              <ShieldCheck size={18} className="notice-icon" />
+              <div>
+                <strong>Administrative Command Access</strong>
+                <p>Restricted access for system administrators and clinic directors. Pre-configured credentials required.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Tab Segment: Only shown for PATIENT role (Patients can register; Doctor/Admin can only sign in) */}
+          {selectedRole === 'PATIENT' && (
+            <div className="auth-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'signin'}
+                className={`auth-tab-btn ${authMode === 'signin' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthMode('signin');
+                  setAuthError(null);
+                }}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'signup'}
+                className={`auth-tab-btn ${authMode === 'signup' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthMode('signup');
+                  setAuthError(null);
+                }}
+              >
+                Create Account
+              </button>
+            </div>
+          )}
 
           {/* Sign In Form */}
           {authMode === 'signin' && (
@@ -460,22 +552,38 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
                 className="glass-button w-full"
                 disabled={isSubmitting || !emailInput.trim() || !passwordInput}
               >
-                {isSubmitting ? 'Authenticating with Supabase...' : 'Sign In'}
+                {isSubmitting
+                  ? 'Authenticating...'
+                  : selectedRole === 'DOCTOR'
+                    ? 'Sign In as Doctor'
+                    : selectedRole === 'ADMIN'
+                      ? 'Sign In as Administrator'
+                      : 'Sign In'}
               </button>
 
-              <div className="auth-switch-prompt">
-                <span>Don't have an account?</span>{' '}
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => {
-                    setAuthMode('signup');
-                    setAuthError(null);
-                  }}
-                >
-                  Create one now
-                </button>
-              </div>
+              {selectedRole === 'PATIENT' ? (
+                <div className="auth-switch-prompt">
+                  <span>Don't have an account?</span>{' '}
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setAuthMode('signup');
+                      setAuthError(null);
+                    }}
+                  >
+                    Create one now
+                  </button>
+                </div>
+              ) : (
+                <div className="auth-switch-prompt">
+                  <small className="notice-subtext">
+                    {selectedRole === 'DOCTOR'
+                      ? 'Doctor accounts are provisioned by clinic administration.'
+                      : 'Administrator accounts require server configuration.'}
+                  </small>
+                </div>
+              )}
             </form>
           )}
 

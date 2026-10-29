@@ -21,6 +21,10 @@ import { CancelAppointmentDto } from './dto/cancel-appointment.dto.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto.js';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto.js';
+import {
+  ClinicPriorityQueue,
+  QueueAppointmentItem,
+} from './queue/clinic-priority-queue.js';
 
 export const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
@@ -31,34 +35,121 @@ export class AppointmentsService {
     private readonly availabilityService: AvailabilityService,
   ) {}
 
-  private mapAppointmentResponse(app: {
-    id: string;
-    patientId: string;
-    doctorId: string;
-    startAt: Date;
-    endAt: Date;
-    status: AppointmentStatus;
-    reason: string | null;
-    cancellationReason: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    doctor?: {
+  /**
+   * Calculates a deterministic daily queue number for a doctor on a specific date.
+   */
+  async calculateQueueNumber(doctorId: string, startAt: Date): Promise<string> {
+    const targetDateStr = getLocalDateStringInClinicTimezone(startAt);
+    const dayStartUTC = new Date(`${targetDateStr}T00:00:00+05:30`);
+
+    const count = await this.prisma.appointment.count({
+      where: {
+        doctorId,
+        status: AppointmentStatus.BOOKED,
+        startAt: {
+          gte: dayStartUTC,
+          lte: startAt,
+        },
+      },
+    });
+
+    return `Q-${String(Math.max(1, count)).padStart(2, '0')}`;
+  }
+
+  /**
+   * Hydrates today's active waiting appointments from PostgreSQL into a Min-Binary-Heap
+   * Priority Queue, ordering patients by scheduled start time with stable FIFO tie-breakers.
+   */
+  async getTodayLiveQueue(doctorId?: string): Promise<QueueAppointmentItem[]> {
+    const todayDateStr = getLocalDateStringInClinicTimezone(new Date());
+    const dayStartUTC = new Date(`${todayDateStr}T00:00:00+05:30`);
+    const dayEndUTC = new Date(`${todayDateStr}T23:59:59.999+05:30`);
+
+    const where: {
+      status: AppointmentStatus;
+      startAt: { gte: Date; lte: Date };
+      doctorId?: string;
+    } = {
+      status: AppointmentStatus.BOOKED,
+      startAt: { gte: dayStartUTC, lte: dayEndUTC },
+    };
+    if (doctorId) {
+      where.doctorId = doctorId;
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where,
+      include: {
+        doctor: {
+          select: {
+            id: true,
+            specialty: true,
+            userProfile: { select: { fullName: true } },
+          },
+        },
+        patient: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
+    });
+
+    const pq = new ClinicPriorityQueue();
+    for (const app of appointments) {
+      pq.enqueue({
+        id: app.id,
+        startAt: app.startAt,
+        createdAt: app.createdAt,
+        patientId: app.patientId,
+        patientName: app.patient?.fullName ?? 'Patient',
+        patientEmail: app.patient?.email,
+        doctorId: app.doctorId,
+        doctorName: app.doctor?.userProfile?.fullName ?? 'Doctor',
+        doctorSpecialty: app.doctor?.specialty ?? 'General',
+        status: app.status,
+        reason: app.reason,
+      });
+    }
+
+    const ordered = pq.toArrayInPriorityOrder();
+    return ordered.map((item, index) => ({
+      ...item,
+      queuePosition: index + 1,
+      queueNumber: `Q-${String(index + 1).padStart(2, '0')}`,
+    }));
+  }
+
+  private mapAppointmentResponse(
+    app: {
       id: string;
-      specialty: string;
-      userProfile?: { fullName: string } | null;
-    } | null;
-    patient?: {
-      id: string;
-      fullName: string;
-      email: string;
-    } | null;
-    review?: {
-      id: string;
-      rating: number;
-      comment: string | null;
-      isDemo: boolean;
-    } | null;
-  }): AppointmentResponseDto {
+      patientId: string;
+      doctorId: string;
+      startAt: Date;
+      endAt: Date;
+      status: AppointmentStatus;
+      reason: string | null;
+      cancellationReason: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      doctor?: {
+        id: string;
+        specialty: string;
+        userProfile?: { fullName: string } | null;
+      } | null;
+      patient?: {
+        id: string;
+        fullName: string;
+        email: string;
+      } | null;
+      review?: {
+        id: string;
+        rating: number;
+        comment: string | null;
+        isDemo: boolean;
+      } | null;
+    },
+    queueNumber?: string,
+    queuePosition?: number | null,
+  ): AppointmentResponseDto {
     return {
       id: app.id,
       patientId: app.patientId,
@@ -92,6 +183,8 @@ export class AppointmentsService {
             isDemo: app.review.isDemo,
           }
         : null,
+      queueNumber: queueNumber ?? `Q-${app.id.slice(0, 4).toUpperCase()}`,
+      queuePosition: queuePosition !== undefined ? queuePosition : null,
     };
   }
 
@@ -242,7 +335,12 @@ export class AppointmentsService {
       return app;
     });
 
-    return this.mapAppointmentResponse(createdAppointment);
+    const queueNumber = await this.calculateQueueNumber(
+      createdAppointment.doctorId,
+      createdAppointment.startAt,
+    );
+
+    return this.mapAppointmentResponse(createdAppointment, queueNumber);
   }
 
   /**
@@ -364,7 +462,30 @@ export class AppointmentsService {
     todayQuery.today = true;
     todayQuery.order = 'asc';
 
-    return this.getMyAppointments(currentUser, todayQuery);
+    const schedule = await this.getMyAppointments(currentUser, todayQuery);
+    if (!currentUser.doctorId) {
+      return schedule;
+    }
+
+    try {
+      const liveQueue = await this.getTodayLiveQueue(currentUser.doctorId);
+      const queueMap = new Map(
+        liveQueue.map((item) => [
+          item.id,
+          { position: item.queuePosition, number: item.queueNumber },
+        ]),
+      );
+
+      return schedule.map((app) => {
+        const q = queueMap.get(app.id);
+        const enriched = Object.assign(new AppointmentResponseDto(), app);
+        enriched.queuePosition = q ? q.position : null;
+        enriched.queueNumber = q ? q.number : app.queueNumber;
+        return enriched;
+      });
+    } catch {
+      return schedule;
+    }
   }
 
   /**

@@ -18,6 +18,7 @@ describe('AppointmentsService', () => {
   };
   let mockPrisma: {
     appointment: {
+      count: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
@@ -75,6 +76,7 @@ describe('AppointmentsService', () => {
   beforeEach(() => {
     mockPrisma = {
       appointment: {
+        count: vi.fn().mockResolvedValue(1),
         create: vi.fn(),
         findFirst: vi.fn(),
         findMany: vi.fn(),

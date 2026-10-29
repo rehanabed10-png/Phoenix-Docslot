@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { AppointmentStatus, PrismaClient, UserRole } from '../generated/prisma/client.js';
 import {
+  DEMO_ADMIN,
   DEMO_DOCTORS,
   DEMO_PATIENT,
   DemoDoctorSeedData,
@@ -271,6 +272,47 @@ export async function seedPatient(
   return identity.userId;
 }
 
+export async function seedAdmin(
+  admin: DemoPatientSeedData,
+  deps?: SeedDependencies,
+): Promise<string> {
+  const prisma = deps?.prisma ?? getDefaultPrisma();
+  const logger = deps?.logger ?? console;
+
+  const identity = await resolveUserIdentity(
+    admin.email,
+    admin.fullName,
+    admin.envVarUserIdKey,
+    admin.defaultUserId,
+    deps,
+  );
+
+  logger.log(
+    `[Seed] Upserting Administrator "${admin.fullName}" (email: ${admin.email}, source: ${identity.source})...`,
+  );
+
+  await prisma.userProfile.upsert({
+    where: { id: identity.userId },
+    update: {
+      fullName: admin.fullName,
+      email: admin.email.toLowerCase(),
+      phone: admin.phone,
+      role: UserRole.ADMIN,
+      isActive: true,
+    },
+    create: {
+      id: identity.userId,
+      fullName: admin.fullName,
+      email: admin.email.toLowerCase(),
+      phone: admin.phone,
+      role: UserRole.ADMIN,
+      isActive: true,
+    },
+  });
+
+  return identity.userId;
+}
+
 export async function seedDoctor(
   doc: DemoDoctorSeedData,
   deps?: SeedDependencies,
@@ -468,12 +510,15 @@ export async function runSeed(deps?: SeedDependencies): Promise<void> {
     // Step 2: Seed patient
     const patientUserId = await seedPatient(DEMO_PATIENT, deps);
 
-    // Step 3: Seed doctors
+    // Step 3: Seed administrator
+    await seedAdmin(DEMO_ADMIN, deps);
+
+    // Step 4: Seed doctors
     for (const doc of DEMO_DOCTORS) {
       await seedDoctor(doc, deps);
     }
 
-    // Step 4: Seed sample demo reviews for completed visits
+    // Step 5: Seed sample demo reviews for completed visits
     await seedDemoReviews(patientUserId, deps);
 
     logger.log('\n========================================================');

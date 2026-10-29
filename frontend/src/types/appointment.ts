@@ -53,12 +53,30 @@ export interface AppointmentResponse {
   updatedAt: string;
   doctor?: AppointmentDoctorSummary;
   patient?: AppointmentPatientSummary;
+  queuePosition?: number | null;
+  queueNumber?: string;
   review?: {
     id: string;
     rating: number;
     comment?: string | null;
     isDemo?: boolean;
   } | null;
+}
+
+export interface QueueAppointmentItem {
+  id: string;
+  startAt: string;
+  createdAt: string;
+  patientId: string;
+  patientName: string;
+  patientEmail?: string;
+  doctorId: string;
+  doctorName: string;
+  doctorSpecialty: string;
+  status: AppointmentStatus;
+  reason?: string | null;
+  queuePosition: number;
+  queueNumber: string;
 }
 
 export interface CancelAppointmentRequest {

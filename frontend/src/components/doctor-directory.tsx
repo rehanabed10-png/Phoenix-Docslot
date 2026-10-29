@@ -37,6 +37,30 @@ const POPULAR_SPECIALTIES = [
   'Pediatrics',
 ]
 
+function DoctorAvatar({ src, name }: { src: string | null; name: string }) {
+  const [hasError, setHasError] = useState(false)
+
+  if (!src || hasError) {
+    return (
+      <div className="doctor-avatar" aria-label={name}>
+        <User size={26} className="doctor-avatar-fallback-icon" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="doctor-avatar">
+      <img
+        src={src}
+        alt={name}
+        className="doctor-avatar-img"
+        onError={() => setHasError(true)}
+        loading="lazy"
+      />
+    </div>
+  )
+}
+
 export function DoctorDirectory() {
   const [doctors, setDoctors] = useState<DoctorSummary[]>([])
   const [meta, setMeta] = useState<PaginationMeta>({
@@ -299,17 +323,7 @@ export function DoctorDirectory() {
               {doctors.map((doctor) => (
                 <article key={doctor.id} className="doctor-card">
                   <div className="doctor-card-top">
-                    <div className="doctor-avatar">
-                      {doctor.avatarUrl ? (
-                        <img
-                          src={doctor.avatarUrl}
-                          alt={doctor.fullName}
-                          className="doctor-avatar-img"
-                        />
-                      ) : (
-                        <User size={20} />
-                      )}
-                    </div>
+                    <DoctorAvatar src={doctor.avatarUrl} name={doctor.fullName} />
                     <div className="doctor-title-block">
                       <h3 className="doctor-name">{doctor.fullName}</h3>
                       <span className="doctor-specialty-badge">
@@ -360,20 +374,22 @@ export function DoctorDirectory() {
                         </span>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      className="glass-button view-profile-btn"
-                      onClick={() => handleOpenDoctorDetail(doctor.id)}
-                    >
-                      View Profile
-                    </button>
-                    <button
-                      type="button"
-                      className="glass-button-secondary book-slot-card-btn"
-                      onClick={() => setBookingDoctor(doctor)}
-                    >
-                      Book Slot
-                    </button>
+                    <div className="doctor-card-actions-row">
+                      <button
+                        type="button"
+                        className="glass-button view-profile-btn"
+                        onClick={() => handleOpenDoctorDetail(doctor.id)}
+                      >
+                        View Profile
+                      </button>
+                      <button
+                        type="button"
+                        className="glass-button-secondary book-slot-card-btn"
+                        onClick={() => setBookingDoctor(doctor)}
+                      >
+                        Book Slot
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}
@@ -457,17 +473,7 @@ export function DoctorDirectory() {
               <div className="modal-profile-content">
                 {/* Doctor Header Strip */}
                 <div className="modal-header">
-                  <div className="modal-avatar">
-                    {selectedDoctor.avatarUrl ? (
-                      <img
-                        src={selectedDoctor.avatarUrl}
-                        alt={selectedDoctor.fullName}
-                        className="modal-avatar-img"
-                      />
-                    ) : (
-                      <User size={30} />
-                    )}
-                  </div>
+                  <DoctorAvatar src={selectedDoctor.avatarUrl} name={selectedDoctor.fullName} />
                   <div>
                     <h3 id="modal-doctor-title" className="modal-doctor-name">
                       {selectedDoctor.fullName}

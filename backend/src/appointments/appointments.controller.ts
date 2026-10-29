@@ -71,6 +71,17 @@ export class AppointmentsController {
   }
 
   /**
+   * Protected: Retrieves the live priority queue of today's waiting appointments.
+   * Authorized Actors: PATIENT, DOCTOR, ADMIN.
+   */
+  @Get('queue/today')
+  async getTodayQueue(
+    @Query('doctorId') doctorId?: string,
+  ): Promise<any[]> {
+    return this.appointmentsService.getTodayLiveQueue(doctorId);
+  }
+
+  /**
    * Protected: Retrieves single appointment details with role/ownership enforcement.
    */
   @Get(':id')
